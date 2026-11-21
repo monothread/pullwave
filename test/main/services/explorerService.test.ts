@@ -8,7 +8,7 @@ import {
     parseExplorerMediaUrl,
     validateEntryName
 } from '@main/services/explorerService';
-import { ExplorerThumbnails } from '@main/services/explorerThumbnails';
+import { ExplorerThumbnails, thumbnailCacheKey } from '@main/services/explorerThumbnails';
 import { defaultMediaFileSystem } from '@main/services/mediaProtocol';
 
 describe('ExplorerService', () => {
@@ -227,5 +227,31 @@ describe('ExplorerService', () => {
 
         const badRes = await handler(new Request('pullwave-explorer://media/99999'));
         expect(badRes.status).toBe(404);
+
+        const thumbFile = join(workDir, 'thumbs', `${thumbnailCacheKey(movie.path, movie.modifiedAt, movie.sizeBytes)}.jpg`);
+        expect(existsSync(thumbFile)).toBe(true);
+        expect(await service.trash(movie.path)).toEqual({ ok: true });
+        expect(existsSync(thumbFile)).toBe(false);
+        expect(service.resolveToken(movie.token!)).toBeNull();
+
+        const clipPath = join(subDir, 'nested.mp4');
+        writeFileSync(clipPath, 'nested-video');
+        const subListed = await service.list(subDir);
+        expect(subListed.ok).toBe(true);
+        if (subListed.ok) {
+            const nested = subListed.listing.entries[0]!;
+            const nestedRes = await handler(new Request(nested.thumbnailUrl!));
+            expect(nestedRes.status).toBe(200);
+            const nestedThumb = join(workDir, 'thumbs', `${thumbnailCacheKey(nested.path, nested.modifiedAt, nested.sizeBytes)}.jpg`);
+            expect(existsSync(nestedThumb)).toBe(true);
+
+            expect(await service.rename(subDir, 'ClipsRenamed')).toEqual({
+                ok: true,
+                path: join(mediaDir, 'ClipsRenamed'),
+                name: 'ClipsRenamed'
+            });
+            expect(existsSync(nestedThumb)).toBe(false);
+            expect(service.resolveToken(nested.token!)).toBeNull();
+        }
     });
 });

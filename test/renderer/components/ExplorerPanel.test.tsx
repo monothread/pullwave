@@ -6,7 +6,7 @@ import { ExplorerPanel } from '@renderer/components/ExplorerPanel';
 import { useAppStore } from '@renderer/store/appStore';
 import { useConvertStore } from '@renderer/store/convertStore';
 import { useCutStore } from '@renderer/store/cutStore';
-import { useExplorerStore } from '@renderer/store/explorerStore';
+import { DEFAULT_EXPLORER_PREFS, useExplorerStore } from '@renderer/store/explorerStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 const FOLDER: ExplorerEntry = {
@@ -63,9 +63,10 @@ const initialCut = useCutStore.getInitialState();
 let mock: MockApiHandle;
 
 beforeEach(() => {
+    window.localStorage.clear();
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, tab: 'downloads', downloadsView: 'explorer' });
-    useExplorerStore.setState({ ...initialExplorer });
+    useExplorerStore.setState({ ...initialExplorer, ...DEFAULT_EXPLORER_PREFS });
     useConvertStore.setState({ ...initialConvert });
     useCutStore.setState({ ...initialCut });
     mock.api.explorer.list.mockResolvedValue({ ok: true, listing: LISTING });

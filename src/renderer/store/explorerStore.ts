@@ -17,6 +17,58 @@ import {
     type ExplorerViewMode
 } from '../components/explorerHelpers';
 
+export const EXPLORER_PREFS_STORAGE_KEY = 'pullwave.explorer.prefs';
+
+const SORT_BY_OPTIONS: readonly ExplorerSortBy[] = ['name', 'modified', 'size', 'kind'];
+const SORT_DIRECTIONS: readonly ExplorerSortDirection[] = ['asc', 'desc'];
+const VIEW_MODES: readonly ExplorerViewMode[] = ['grid', 'list'];
+
+export interface ExplorerPrefs {
+    sortBy: ExplorerSortBy;
+    sortDirection: ExplorerSortDirection;
+    viewMode: ExplorerViewMode;
+}
+
+export const DEFAULT_EXPLORER_PREFS: ExplorerPrefs = {
+    sortBy: 'name',
+    sortDirection: 'asc',
+    viewMode: 'grid'
+};
+
+function pickOption<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
+    return (
+        options.find((option) => {
+            return option === value;
+        }) ?? fallback
+    );
+}
+
+export function readExplorerPrefs(): ExplorerPrefs {
+    try {
+        const raw = window.localStorage.getItem(EXPLORER_PREFS_STORAGE_KEY);
+        if (raw === null) {
+            return DEFAULT_EXPLORER_PREFS;
+        }
+        const parsed: unknown = JSON.parse(raw);
+        const record = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+        return {
+            sortBy: pickOption(record['sortBy'], SORT_BY_OPTIONS, DEFAULT_EXPLORER_PREFS.sortBy),
+            sortDirection: pickOption(record['sortDirection'], SORT_DIRECTIONS, DEFAULT_EXPLORER_PREFS.sortDirection),
+            viewMode: pickOption(record['viewMode'], VIEW_MODES, DEFAULT_EXPLORER_PREFS.viewMode)
+        };
+    } catch {
+        return DEFAULT_EXPLORER_PREFS;
+    }
+}
+
+function writeExplorerPrefs(prefs: ExplorerPrefs): void {
+    try {
+        window.localStorage.setItem(EXPLORER_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+    } catch {
+        return undefined;
+    }
+}
+
 export interface ExplorerPlayerState {
     entry: ExplorerEntry;
     status: 'ready' | 'converting' | 'failed';
@@ -130,9 +182,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
         showHidden: false,
         filter: 'all',
         query: '',
-        sortBy: 'name',
-        sortDirection: 'asc',
-        viewMode: 'grid',
+        ...readExplorerPrefs(),
         playing: null,
 
         open: async (directory) => {
@@ -197,16 +247,21 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
         },
 
         setSortBy: (sortBy) => {
+            const { sortDirection, viewMode } = get();
+            writeExplorerPrefs({ sortBy, sortDirection, viewMode });
             set({ sortBy });
         },
 
         toggleSortDirection: () => {
-            set((state) => {
-                return { sortDirection: state.sortDirection === 'asc' ? 'desc' : 'asc' };
-            });
+            const { sortBy, sortDirection, viewMode } = get();
+            const nextDirection: ExplorerSortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            writeExplorerPrefs({ sortBy, sortDirection: nextDirection, viewMode });
+            set({ sortDirection: nextDirection });
         },
 
         setViewMode: (viewMode) => {
+            const { sortBy, sortDirection } = get();
+            writeExplorerPrefs({ sortBy, sortDirection, viewMode });
             set({ viewMode });
         },
 
@@ -237,7 +292,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
                                 playing: {
                                     ...activePlaying,
                                     entry: updated,
-                                    url: activePlaying.converted ? activePlaying.url : updated.mediaUrl
+                                    url: updated.mediaUrl,
+                                    converted: false
                                 }
                             });
                         }

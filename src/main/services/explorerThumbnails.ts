@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { EXPLORER_MEDIA_SCHEME, type ExplorerEntry, type ExplorerMediaRoute, type ExplorerPreviewResponse } from '@shared/explorer';
 import { createConcurrencyLimit, type ConcurrencyLimit } from './concurrencyLimit';
@@ -9,6 +9,8 @@ import type { RunFfmpeg } from './cutService';
 export const EXPLORER_THUMB_WIDTH = 320;
 export const EXPLORER_THUMB_SEEK_SECONDS = 2;
 export const DEFAULT_MAX_CACHE_FILES = 400;
+export const DEFAULT_THUMB_MAX_AGE_MS = 30 * 60 * 1000;
+export const DEFAULT_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_THUMB_CONCURRENCY = 2;
 
 export interface ExplorerThumbnailsDependencies {
@@ -17,6 +19,9 @@ export interface ExplorerThumbnailsDependencies {
     previewDirectory: string;
     concurrency?: number;
     maxCacheFiles?: number;
+    maxAgeMs?: number;
+    pruneIntervalMs?: number;
+    now?: () => number;
 }
 
 export function explorerMediaUrl(route: ExplorerMediaRoute, id: number): string {
@@ -73,13 +78,20 @@ interface ActivePreview {
     path: string;
 }
 
+interface InFlightThumbnail {
+    promise: Promise<string | null>;
+    controller: AbortController;
+}
+
 export class ExplorerThumbnails {
     private readonly limit: ConcurrencyLimit;
-    private readonly inFlight = new Map<string, Promise<string | null>>();
+    private readonly inFlight = new Map<string, InFlightThumbnail>();
     private activePreview: ActivePreview | null = null;
+    private previewInFlightKey: string | null = null;
     private generation = 0;
     private thumbController = new AbortController();
     private previewController: AbortController | null = null;
+    private pruneTimer: ReturnType<typeof setInterval> | null = null;
     private nextId = 1;
     private tempCounter = 1;
     private pruning = false;
@@ -88,23 +100,58 @@ export class ExplorerThumbnails {
     constructor(private readonly deps: ExplorerThumbnailsDependencies) {
         this.limit = createConcurrencyLimit(deps.concurrency ?? DEFAULT_THUMB_CONCURRENCY);
         this.removePreviewDir();
-        void this.cleanStaleTempThumbs();
+        this.removeCacheDir();
+        const intervalMs = deps.pruneIntervalMs ?? DEFAULT_PRUNE_INTERVAL_MS;
+        if (intervalMs > 0) {
+            this.pruneTimer = setInterval(() => {
+                this.schedulePrune();
+            }, intervalMs);
+            this.pruneTimer.unref();
+        }
     }
 
     cancelPending(): void {
         this.generation += 1;
         this.thumbController.abort();
         this.thumbController = new AbortController();
+        for (const item of this.inFlight.values()) {
+            item.controller.abort();
+        }
         this.inFlight.clear();
     }
 
     cancelPreview(): void {
         this.previewController?.abort();
         this.previewController = null;
+        this.previewInFlightKey = null;
     }
 
     resolvePreview(id: number): string | null {
         return this.activePreview !== null && this.activePreview.id === id ? this.activePreview.path : null;
+    }
+
+    async evict(entry: Pick<ExplorerEntry, 'path' | 'modifiedAt' | 'sizeBytes'>): Promise<void> {
+        const key = thumbnailCacheKey(entry.path, entry.modifiedAt, entry.sizeBytes);
+        const target = join(this.deps.cacheDirectory, `${key}.jpg`);
+        const pending = this.inFlight.get(key);
+        if (pending !== undefined) {
+            this.inFlight.delete(key);
+            pending.controller.abort();
+        }
+        await rm(target, { force: true }).catch(() => {
+            return undefined;
+        });
+        if (this.previewInFlightKey === key) {
+            this.cancelPreview();
+        }
+        if (this.activePreview !== null && this.activePreview.key === key) {
+            const previewPath = this.activePreview.path;
+            this.activePreview = null;
+            this.cancelPreview();
+            await rm(previewPath, { force: true }).catch(() => {
+                return undefined;
+            });
+        }
     }
 
     async thumbnail(entry: Pick<ExplorerEntry, 'path' | 'kind' | 'modifiedAt' | 'sizeBytes'>): Promise<string | null> {
@@ -112,26 +159,27 @@ export class ExplorerThumbnails {
             return null;
         }
         const generation = this.generation;
-        const signal = this.thumbController.signal;
+        const batchSignal = this.thumbController.signal;
         const key = thumbnailCacheKey(entry.path, entry.modifiedAt, entry.sizeBytes);
         const target = join(this.deps.cacheDirectory, `${key}.jpg`);
-        if (await fileHasBytes(target)) {
+        if (await this.hasFreshThumbnail(target)) {
             return target;
         }
-        if (signal.aborted || generation !== this.generation) {
+        if (batchSignal.aborted || generation !== this.generation) {
             return null;
         }
         const existing = this.inFlight.get(key);
         if (existing !== undefined) {
-            return existing;
+            return existing.promise;
         }
-        const job = this.generateThumbnail(entry.path, target, generation, signal).finally(() => {
-            if (this.inFlight.get(key) === job) {
+        const itemController = new AbortController();
+        const promise = this.generateThumbnail(entry.path, target, generation, itemController.signal).finally(() => {
+            if (this.inFlight.get(key)?.promise === promise) {
                 this.inFlight.delete(key);
             }
         });
-        this.inFlight.set(key, job);
-        return job;
+        this.inFlight.set(key, { promise, controller: itemController });
+        return promise;
     }
 
     async preview(entry: Pick<ExplorerEntry, 'path' | 'kind' | 'modifiedAt' | 'sizeBytes'>): Promise<ExplorerPreviewResponse> {
@@ -146,6 +194,7 @@ export class ExplorerThumbnails {
         this.previewController?.abort();
         const controller = new AbortController();
         this.previewController = controller;
+        this.previewInFlightKey = key;
         const id = this.takeId();
         const extension = entry.kind === 'video' ? '.mp4' : '.m4a';
         const output = join(this.deps.previewDirectory, `preview-${String(id)}${extension}`);
@@ -154,12 +203,14 @@ export class ExplorerThumbnails {
         } catch {
             if (this.previewController === controller) {
                 this.previewController = null;
+                this.previewInFlightKey = null;
             }
             return { ok: false, reason: 'failed' };
         }
         const outcome = await runFfmpeg({ args: buildExplorerPreviewArgs(entry, output), signal: controller.signal });
         if (this.previewController === controller) {
             this.previewController = null;
+            this.previewInFlightKey = null;
         }
         if (controller.signal.aborted) {
             await rm(output, { force: true }).catch(() => {
@@ -190,10 +241,45 @@ export class ExplorerThumbnails {
     }
 
     dispose(): void {
+        if (this.pruneTimer !== null) {
+            clearInterval(this.pruneTimer);
+            this.pruneTimer = null;
+        }
         this.cancelPending();
         this.cancelPreview();
         this.activePreview = null;
         this.removePreviewDir();
+        this.removeCacheDir();
+    }
+
+    private currentNow(): number {
+        return this.deps.now ? this.deps.now() : Date.now();
+    }
+
+    private isExpired(mtimeMs: number): boolean {
+        const maxAge = this.deps.maxAgeMs ?? DEFAULT_THUMB_MAX_AGE_MS;
+        if (maxAge <= 0) {
+            return false;
+        }
+        return this.currentNow() - mtimeMs > maxAge;
+    }
+
+    private async hasFreshThumbnail(path: string): Promise<boolean> {
+        try {
+            const info = await stat(path);
+            if (!info.isFile() || info.size <= 0) {
+                return false;
+            }
+            if (this.isExpired(info.mtimeMs)) {
+                await rm(path, { force: true }).catch(() => {
+                    return undefined;
+                });
+                return false;
+            }
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     private async generateThumbnail(videoPath: string, target: string, generation: number, signal: AbortSignal): Promise<string | null> {
@@ -201,7 +287,7 @@ export class ExplorerThumbnails {
             if (signal.aborted || generation !== this.generation) {
                 return null;
             }
-            if (await fileHasBytes(target)) {
+            if (await this.hasFreshThumbnail(target)) {
                 return target;
             }
             const runFfmpeg = this.deps.runFfmpeg();
@@ -221,7 +307,7 @@ export class ExplorerThumbnails {
                 const retry = await runFfmpeg({ args: buildExplorerThumbArgs(videoPath, temp, 0), signal });
                 ready = !signal.aborted && retry.code === 0 && (await fileHasBytes(temp));
             }
-            if (!ready) {
+            if (!ready || signal.aborted || generation !== this.generation) {
                 await rm(temp, { force: true }).catch(() => {
                     return undefined;
                 });
@@ -229,11 +315,17 @@ export class ExplorerThumbnails {
             }
             try {
                 await rename(temp, target);
+                if (this.deps.now !== undefined) {
+                    const stampSeconds = this.deps.now() / 1000;
+                    await utimes(target, stampSeconds, stampSeconds).catch(() => {
+                        return undefined;
+                    });
+                }
             } catch {
                 await rm(temp, { force: true }).catch(() => {
                     return undefined;
                 });
-                return (await fileHasBytes(target)) ? target : null;
+                return (await this.hasFreshThumbnail(target)) ? target : null;
             }
             this.schedulePrune();
             return target;
@@ -255,32 +347,13 @@ export class ExplorerThumbnails {
         });
     }
 
-    private async cleanStaleTempThumbs(): Promise<void> {
-        try {
-            const names = await readdir(this.deps.cacheDirectory);
-            await Promise.all(
-                names
-                    .filter((name) => {
-                        return name.startsWith('.tmp-');
-                    })
-                    .map((name) => {
-                        return rm(join(this.deps.cacheDirectory, name), { force: true }).catch(() => {
-                            return undefined;
-                        });
-                    })
-            );
-        } catch {
-            return undefined;
-        }
-    }
-
     private async pruneCache(): Promise<void> {
         const max = this.deps.maxCacheFiles ?? DEFAULT_MAX_CACHE_FILES;
         try {
             const names = (await readdir(this.deps.cacheDirectory)).filter((name) => {
                 return name.endsWith('.jpg') && !name.startsWith('.tmp-');
             });
-            if (names.length <= max) {
+            if (names.length === 0) {
                 return;
             }
             const entries = await Promise.all(
@@ -289,20 +362,37 @@ export class ExplorerThumbnails {
                     const info = await stat(full).catch(() => {
                         return null;
                     });
-                    return { full, mtimeMs: info?.mtimeMs ?? 0 };
+                    return { full, info };
                 })
             );
-            entries.sort((a, b) => {
-                return a.mtimeMs - b.mtimeMs;
-            });
-            const removeCount = entries.length - max;
-            await Promise.all(
-                entries.slice(0, removeCount).map((item) => {
-                    return rm(item.full, { force: true }).catch(() => {
-                        return undefined;
-                    });
-                })
-            );
+            const expired: string[] = [];
+            const fresh: Array<{ full: string; mtimeMs: number }> = [];
+            for (const entry of entries) {
+                if (entry.info === null || !entry.info.isFile() || entry.info.size <= 0 || this.isExpired(entry.info.mtimeMs)) {
+                    expired.push(entry.full);
+                } else {
+                    fresh.push({ full: entry.full, mtimeMs: entry.info.mtimeMs });
+                }
+            }
+            const toRemove = [...expired];
+            if (fresh.length > max) {
+                fresh.sort((a, b) => {
+                    return a.mtimeMs - b.mtimeMs;
+                });
+                const overflow = fresh.slice(0, fresh.length - max);
+                for (const item of overflow) {
+                    toRemove.push(item.full);
+                }
+            }
+            if (toRemove.length > 0) {
+                await Promise.all(
+                    toRemove.map((fullPath) => {
+                        return rm(fullPath, { force: true }).catch(() => {
+                            return undefined;
+                        });
+                    })
+                );
+            }
         } catch {
             return undefined;
         }
@@ -317,6 +407,14 @@ export class ExplorerThumbnails {
     private removePreviewDir(): void {
         try {
             rmSync(this.deps.previewDirectory, { recursive: true, force: true });
+        } catch {
+            return undefined;
+        }
+    }
+
+    private removeCacheDir(): void {
+        try {
+            rmSync(this.deps.cacheDirectory, { recursive: true, force: true });
         } catch {
             return undefined;
         }

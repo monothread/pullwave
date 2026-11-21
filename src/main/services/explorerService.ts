@@ -387,7 +387,7 @@ export class ExplorerService {
         }
         try {
             await rename(resolvedTarget, destination);
-            this.removeTokenForPath(resolvedTarget, platform);
+            await this.evictPath(resolvedTarget, info, platform);
             return { ok: true, path: destination, name };
         } catch (error) {
             return { ok: false, reason: mapWriteError(error) };
@@ -418,7 +418,7 @@ export class ExplorerService {
         }
         try {
             await this.deps.trashItem(resolvedTarget);
-            this.removeTokenForPath(resolvedTarget, platform);
+            await this.evictPath(resolvedTarget, info, platform);
             return { ok: true };
         } catch (error) {
             return { ok: false, reason: mapTrashError(error) };
@@ -515,13 +515,43 @@ export class ExplorerService {
         return token;
     }
 
-    private removeTokenForPath(path: string, platform: NodeJS.Platform): void {
-        const key = pathKeyOf(path, platform);
-        const token = this.tokenByPathKey.get(key);
-        if (token !== undefined) {
-            this.tokenByPathKey.delete(key);
-            this.tokens.delete(token);
+    private async evictPath(
+        resolvedTarget: string,
+        info: { isFile: () => boolean; isDirectory: () => boolean; mtimeMs: number; size: number },
+        platform: NodeJS.Platform
+    ): Promise<void> {
+        const toEvict: Array<Pick<ExplorerEntry, 'path' | 'modifiedAt' | 'sizeBytes'>> = [];
+        const targetKey = pathKeyOf(resolvedTarget, platform);
+        if (info.isFile()) {
+            const mtime = info.mtimeMs;
+            toEvict.push({ path: resolvedTarget, modifiedAt: mtime, sizeBytes: info.size });
+            const token = this.tokenByPathKey.get(targetKey);
+            if (token !== undefined) {
+                const entry = this.tokens.get(token);
+                this.tokenByPathKey.delete(targetKey);
+                this.tokens.delete(token);
+                if (entry !== undefined && (entry.modifiedAt !== mtime || entry.sizeBytes !== info.size)) {
+                    toEvict.push({ path: entry.path, modifiedAt: entry.modifiedAt, sizeBytes: entry.sizeBytes });
+                }
+            }
+        } else if (info.isDirectory()) {
+            const prefix = targetKey.endsWith(sep) ? targetKey : `${targetKey}${sep}`;
+            for (const [token, entry] of this.tokens) {
+                const entryKey = pathKeyOf(entry.path, platform);
+                if (entryKey === targetKey || entryKey.startsWith(prefix)) {
+                    this.tokens.delete(token);
+                    if (this.tokenByPathKey.get(entryKey) === token) {
+                        this.tokenByPathKey.delete(entryKey);
+                    }
+                    toEvict.push({ path: entry.path, modifiedAt: entry.modifiedAt, sizeBytes: entry.sizeBytes });
+                }
+            }
         }
+        await Promise.all(
+            toEvict.map((entry) => {
+                return this.deps.thumbnails.evict(entry);
+            })
+        );
     }
 
     private async availableRoots(platform: NodeJS.Platform): Promise<ExplorerRoot[]> {

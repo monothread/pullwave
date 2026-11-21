@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ExplorerEntry, ExplorerListing } from '@shared/explorer';
-import { useExplorerStore } from '@renderer/store/explorerStore';
+import { DEFAULT_EXPLORER_PREFS, EXPLORER_PREFS_STORAGE_KEY, readExplorerPrefs, useExplorerStore } from '@renderer/store/explorerStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 const VIDEO_1: ExplorerEntry = {
@@ -53,8 +53,9 @@ let mock: MockApiHandle;
 const initial = useExplorerStore.getInitialState();
 
 beforeEach(() => {
+    window.localStorage.clear();
     mock = installMockApi();
-    useExplorerStore.setState({ ...initial });
+    useExplorerStore.setState({ ...initial, ...DEFAULT_EXPLORER_PREFS });
 });
 
 describe('explorerStore', () => {
@@ -145,5 +146,32 @@ describe('explorerStore', () => {
         useExplorerStore.getState().playEntry(VIDEO_1);
         expect(await useExplorerStore.getState().trashEntry(VIDEO_1)).toEqual({ ok: true });
         expect(useExplorerStore.getState().playing).toBeNull();
+    });
+
+    it('persists sortBy, sortDirection, and viewMode in localStorage and falls back safely on invalid data', () => {
+        expect(readExplorerPrefs()).toEqual(DEFAULT_EXPLORER_PREFS);
+
+        useExplorerStore.getState().setSortBy('modified');
+        useExplorerStore.getState().toggleSortDirection();
+        useExplorerStore.getState().setViewMode('list');
+
+        expect(useExplorerStore.getState().sortBy).toBe('modified');
+        expect(useExplorerStore.getState().sortDirection).toBe('desc');
+        expect(useExplorerStore.getState().viewMode).toBe('list');
+        expect(readExplorerPrefs()).toEqual({
+            sortBy: 'modified',
+            sortDirection: 'desc',
+            viewMode: 'list'
+        });
+
+        window.localStorage.setItem(EXPLORER_PREFS_STORAGE_KEY, JSON.stringify({ sortBy: 'invalid', sortDirection: 'bad', viewMode: 'list' }));
+        expect(readExplorerPrefs()).toEqual({
+            sortBy: 'name',
+            sortDirection: 'asc',
+            viewMode: 'list'
+        });
+
+        window.localStorage.setItem(EXPLORER_PREFS_STORAGE_KEY, '{not-json');
+        expect(readExplorerPrefs()).toEqual(DEFAULT_EXPLORER_PREFS);
     });
 });
