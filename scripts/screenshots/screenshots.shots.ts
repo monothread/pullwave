@@ -1,10 +1,11 @@
 import { test } from '@playwright/test';
 import { rmSync } from 'node:fs';
+import { delimiter } from 'node:path';
 import { fillLibrary, shootEpisodes, shootLibrary, shootPlayer, shootSchedule, shootSearch, shootSeries } from './anime';
 import { shootHome, shootHomeUltrawide } from './home';
 import { fillMangaLibrary, shootMangaLibrary, shootMangaPage, shootMangaReader, shootMangaSearch, shootMangaSettings, shootMangaTwoPages } from './manga';
 import { launch, prepareAssets, releaseAssets, type Assets } from './session';
-import { historyOf, shootCut, shootError, shootHistory, shootQueue, shootVideoSettings } from './video';
+import { historyOf, shootConvert, shootCut, shootError, shootExplorer, shootHistory, shootMerge, shootQueue, shootVideoSettings } from './video';
 
 const FAKE_FOLDERS = { downloadDir: '/home/user/Videos', animeDownloadDir: '/home/user/Anime', mangaDirectory: '/home/user/Manga' };
 
@@ -25,6 +26,7 @@ test('the video downloader, the anime and the manga, and the home screen, in the
     const shot = await launch(assets, { history: historyOf, settings: { mangaDirectory: DEMO_MANGA_FOLDER } });
     await shootError(shot);
     await shootQueue(shot, 'neon-tokyo-downloads');
+    await shootExplorer(shot, assets);
     await shootHistory(shot);
     await fillLibrary(shot.page);
     await shootSchedule(shot);
@@ -45,9 +47,19 @@ test('the video downloader, the anime and the manga, and the home screen, in the
     await shot.app.close();
 });
 
-test('the cutter and the settings, with the folders of an imaginary home', async () => {
-    const shot = await launch(assets, { env: { PULLWAVE_CUT_FILE: assets.longVideo }, settings: FAKE_FOLDERS });
+test('the tools and the settings, with the folders of an imaginary home', async () => {
+    const videos = [assets.video, assets.longVideo].join(delimiter);
+    const shot = await launch(assets, {
+        env: {
+            PULLWAVE_CUT_FILE: assets.longVideo,
+            PULLWAVE_CONVERT_FILES: videos,
+            PULLWAVE_MERGE_FILES: videos
+        },
+        settings: FAKE_FOLDERS
+    });
     await shootCut(shot);
+    await shootConvert(shot);
+    await shootMerge(shot);
     await shootVideoSettings(shot);
     await shot.app.close();
 });

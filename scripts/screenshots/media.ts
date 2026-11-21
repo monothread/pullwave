@@ -34,7 +34,7 @@ export function makeCover(directory: string, style: CoverStyle): string {
     const file = join(directory, `${fileNameOf(style.title)}.png`);
     const lines = wrapped(style.title);
     const texts = lines.map((line, index) => {
-        const safe = line.replaceAll("'", '');
+        const safe = line.replaceAll("'", '').replaceAll(':', '\\:');
         return `drawtext=fontfile=${FONT}:text='${safe}':fontsize=32:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${String(270 + index * 42)}`;
     });
     ffmpeg([

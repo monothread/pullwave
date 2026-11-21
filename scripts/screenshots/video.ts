@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { VIDEO_TITLES } from './catalog';
 import { resize, snap, WINDOW, type Assets, type Shot } from './session';
@@ -66,10 +67,23 @@ export async function shootHistory(shot: Shot): Promise<void> {
     await snap(shot.page, 'neon-tokyo-history');
 }
 
+export async function shootExplorer(shot: Shot, assets: Assets): Promise<void> {
+    const { page, downloads } = shot;
+    mkdirSync(join(downloads, 'Highlights'), { recursive: true });
+    copyFileSync(assets.video, join(downloads, 'City Lights 4K.mp4'));
+    copyFileSync(assets.longVideo, join(downloads, 'Late Night Session.mp4'));
+    await openVideoDownloader(page);
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'EXPLORER', exact: true }).click();
+    await expect(page.getByText('City Lights 4K.mp4')).toBeVisible({ timeout: 20000 });
+    await page.waitForTimeout(1500);
+    await snap(page, 'neon-tokyo-explorer');
+}
+
 export async function shootCut(shot: Shot): Promise<void> {
     const { page } = shot;
     await openVideoDownloader(page);
-    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'CUT' }).click();
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'TOOLS', exact: true }).click();
+    await page.getByRole('tab', { name: 'CUT' }).click();
     await resize(shot.app, page, WINDOW.width, WINDOW.height + 100);
     await page.getByRole('button', { name: 'CHOOSE FILE' }).click();
     await expect(page.getByTestId('cut-segment')).toHaveCount(1, { timeout: 20000 });
@@ -81,6 +95,29 @@ export async function shootCut(shot: Shot): Promise<void> {
     await page.waitForTimeout(1000);
     await snap(page, 'neon-tokyo-cut');
     await resize(shot.app, page, WINDOW.width, WINDOW.height);
+}
+
+export async function shootConvert(shot: Shot): Promise<void> {
+    const { page } = shot;
+    await openVideoDownloader(page);
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'TOOLS', exact: true }).click();
+    await page.getByRole('tab', { name: 'CONVERT' }).click();
+    await page.getByRole('button', { name: 'CHOOSE VIDEOS' }).click();
+    await expect(page.getByTestId('convert-item')).toHaveCount(2, { timeout: 20000 });
+    await page.waitForTimeout(800);
+    await snap(page, 'neon-tokyo-convert');
+}
+
+export async function shootMerge(shot: Shot): Promise<void> {
+    const { page } = shot;
+    await openVideoDownloader(page);
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'TOOLS', exact: true }).click();
+    await page.getByRole('tab', { name: 'MERGE' }).click();
+    await page.getByRole('button', { name: 'CHOOSE VIDEOS' }).click();
+    await expect(page.getByTestId('merge-item')).toHaveCount(2, { timeout: 20000 });
+    await page.getByLabel('Output file name').fill('Weekend Compilation');
+    await page.waitForTimeout(800);
+    await snap(page, 'neon-tokyo-merge');
 }
 
 export async function shootVideoSettings(shot: Shot): Promise<void> {

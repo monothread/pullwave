@@ -127,6 +127,8 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 Lists every finished and failed download with timestamp and a quick action to reveal the file in your file manager.
 
 ### Explorer
+![Video downloader media explorer](docs/screenshots/neon-tokyo-explorer.png)
+
 Browse your configured downloads folder directly inside Pullwave:
 - Confined to your configured **downloads directory** (and its subfolders) and shows **only folders, videos, and audio files** — non-media and hidden files are filtered out automatically, with search and type filters (**ALL**, **VIDEOS**, **AUDIO**), persistent sort and view preferences, breadcrumb navigation, **UP**, **REFRESH**, and a single **OPEN FOLDER** button next to the item count summary.
 - Video cards load on-demand FFmpeg thumbnails backed by a session disk cache with a 30-minute TTL.
@@ -134,7 +136,11 @@ Browse your configured downloads folder directly inside Pullwave:
 - Media cards include quick **TO AUDIO**, **MERGE**, and **CUT** actions; clicking **SHOW FILE** in the queue, history, converter, or merger reveals and highlights the file directly inside the Explorer tab; right-clicking a card or the background opens a context menu next to the cursor with **New folder**, **Rename** (preserving file extensions), **Show in folder**, **Convert to audio**, **Add to merge**, **Cut**, and **Move to trash** (for media files and completely empty folders, with a confirmation dialog).
 
 ### Tools (Cut, Convert & Merge)
-![Cut mode with two marked segments](docs/screenshots/neon-tokyo-cut.png)
+| Cut mode | Merge mode |
+|---|---|
+| ![Cut mode with two marked segments](docs/screenshots/neon-tokyo-cut.png) | ![Merge mode with ordered videos](docs/screenshots/neon-tokyo-merge.png) |
+
+![Convert mode with videos queued for audio extraction](docs/screenshots/neon-tokyo-convert.png)
 
 A unified **TOOLS** tab brings **CUT**, **CONVERT**, and **MERGE** together behind a mode switcher (preserving each tool's state and displaying an active indicator if another mode is running in the background):
 
