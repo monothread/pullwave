@@ -1,10 +1,9 @@
 import type { MessageKey } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore, type DownloadsView } from '../store/appStore';
-import { ConvertPanel } from './ConvertPanel';
-import { CutPanel } from './CutPanel';
 import { ExplorerPanel } from './ExplorerPanel';
 import { HistoryList } from './HistoryList';
+import { MediaToolsPanel } from './MediaToolsPanel';
 import { ProgramsGate } from './ProgramsSetup';
 import { QueueList } from './QueueList';
 import { SettingsPanel } from './SettingsPanel';
@@ -13,10 +12,9 @@ import { UrlInput } from './UrlInput';
 
 const VIEWS: ReadonlyArray<{ id: DownloadsView; label: MessageKey; icon?: string }> = [
     { id: 'queue', label: 'downloads.nav.queue' },
-    { id: 'history', label: 'downloads.nav.history' },
     { id: 'explorer', label: 'downloads.nav.explorer' },
-    { id: 'cut', label: 'downloads.nav.cut' },
-    { id: 'convert', label: 'downloads.nav.convert' },
+    { id: 'history', label: 'downloads.nav.history' },
+    { id: 'tools', label: 'downloads.nav.tools' },
     { id: 'settings', label: 'downloads.nav.settings', icon: SETTINGS_ICON }
 ];
 
@@ -57,14 +55,9 @@ export function DownloadsPanel() {
                     <QueueList />
                 </ProgramsGate>
             )}
-            {view === 'cut' && (
+            {view === 'tools' && (
                 <ProgramsGate area="downloads">
-                    <CutPanel />
-                </ProgramsGate>
-            )}
-            {view === 'convert' && (
-                <ProgramsGate area="downloads">
-                    <ConvertPanel />
+                    <MediaToolsPanel />
                 </ProgramsGate>
             )}
             {view === 'explorer' && <ExplorerPanel />}

@@ -61,7 +61,8 @@ async function launch(file: string, audioFormat = 'mp3'): Promise<void> {
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
     await leaveHome(page);
-    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'CUT' }).click();
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'TOOLS' }).click();
+    await page.getByRole('tab', { name: 'CUT' }).click();
 }
 
 function cutButton() {

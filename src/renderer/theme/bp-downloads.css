@@ -318,6 +318,58 @@
     margin-bottom: 2px;
 }
 
+.tools {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tools__modes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.tools__mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tools__mode-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+    flex: none;
+}
+
+.tools__mode--active .tools__mode-dot {
+    background: currentColor;
+    box-shadow: none;
+}
+
+.merge__order {
+    flex: none;
+    min-width: 28px;
+    color: var(--cyan);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.merge__controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.merge__options .field:first-child {
+    flex: 1 1 240px;
+    min-width: 180px;
+}
+
 .explorer {
     display: flex;
     flex-direction: column;

@@ -36,7 +36,8 @@ const FILES_WITH_BARS: Record<string, string[]> = {
     'ProgramsSetup.tsx': ['progress'],
     'ProgramsStatusBlock.tsx': ['progress'],
     'ReaderChapterZone.tsx': ['progress'],
-    'VideoControls.tsx': ['player__range', 'player__seek', 'player__volume']
+    'VideoControls.tsx': ['player__range', 'player__seek', 'player__volume'],
+    'mediaToolHelpers.tsx': ['progress']
 };
 
 function componentsWithBars(): string[] {

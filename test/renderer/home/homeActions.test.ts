@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { openActiveDownload, openAnime, openManga, openSubtitleJobs, pasteLink, showCut, showQueue } from '@renderer/home/homeActions';
+import { openActiveDownload, openAnime, openManga, openSubtitleJobs, pasteLink, showQueue, showTools } from '@renderer/home/homeActions';
 import { onNavigationBatchEnd } from '@renderer/navigation/navigationBatch';
 import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
@@ -47,18 +47,18 @@ describe('openSubtitleJobs', () => {
     });
 });
 
-describe('showCut', () => {
-    it('opens the cutter of the video downloader', () => {
-        showCut();
+describe('showTools', () => {
+    it('opens the tools screen of the video downloader', () => {
+        showTools();
         expect(app.setTab.mock.calls).toEqual([['downloads']]);
-        expect(app.setDownloadsView.mock.calls).toEqual([['cut']]);
+        expect(app.setDownloadsView.mock.calls).toEqual([['tools']]);
     });
 });
 
 describe('the changes of page of the home screen', () => {
     it.each([
         ['showQueue', showQueue],
-        ['showCut', showCut],
+        ['showTools', showTools],
         ['openAnime', () => {
             openAnime('updates');
         }],

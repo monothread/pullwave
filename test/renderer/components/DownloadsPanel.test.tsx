@@ -54,30 +54,21 @@ describe('DownloadsPanel', () => {
             expect(mock.api.programs.install).toHaveBeenCalledWith('ytdlp');
         });
 
-        it('shows the cutter once the programs are ready, and how they are downloaded in its place when one failed', async () => {
+        it('shows the tools panel once the programs are ready, and how they are downloaded in its place when one failed', async () => {
             const user = userEvent.setup();
             const { unmount } = render(<DownloadsPanel />);
-            await user.click(within(subNav()).getByRole('button', { name: 'CUT' }));
+            await user.click(within(subNav()).getByRole('button', { name: 'TOOLS' }));
             expect(screen.getByRole('button', { name: 'CHOOSE FILE' })).toBeInTheDocument();
             expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
-            unmount();
-            failProgram('ffmpeg');
-            render(<DownloadsPanel />);
-            expect(screen.getByTestId('programs-setup-downloads')).toHaveTextContent('PREPARING THE VIDEO DOWNLOADER');
-            expect(screen.queryByRole('button', { name: 'CHOOSE FILE' })).not.toBeInTheDocument();
-        });
-
-        it('shows the converter once the programs are ready, and how they are downloaded in its place when one failed', async () => {
-            const user = userEvent.setup();
-            const { unmount } = render(<DownloadsPanel />);
-            await user.click(within(subNav()).getByRole('button', { name: 'CONVERT' }));
+            await user.click(screen.getByRole('tab', { name: 'CONVERT' }));
             expect(screen.getByRole('button', { name: 'CHOOSE VIDEOS' })).toBeInTheDocument();
-            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            await user.click(screen.getByRole('tab', { name: 'MERGE' }));
+            expect(screen.getByRole('region', { name: 'Merge videos' })).toBeInTheDocument();
             unmount();
             failProgram('ffmpeg');
             render(<DownloadsPanel />);
             expect(screen.getByTestId('programs-setup-downloads')).toHaveTextContent('PREPARING THE VIDEO DOWNLOADER');
-            expect(screen.queryByRole('button', { name: 'CHOOSE VIDEOS' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('region', { name: 'Merge videos' })).not.toBeInTheDocument();
         });
 
         it('does not hold the history, the explorer or the settings back', async () => {
@@ -95,7 +86,7 @@ describe('DownloadsPanel', () => {
         });
     });
 
-    it('is a region of the video downloader with QUEUE, HISTORY, EXPLORER, CUT, CONVERT and SETTINGS screens', () => {
+    it('is a region of the video downloader with QUEUE, EXPLORER, HISTORY, TOOLS and SETTINGS screens', () => {
         render(<DownloadsPanel />);
         expect(screen.getByRole('region', { name: 'Video downloader' })).toBeInTheDocument();
         expect(
@@ -104,7 +95,7 @@ describe('DownloadsPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['QUEUE', 'HISTORY', 'EXPLORER', 'CUT', 'CONVERT', 'SETTINGS']);
+        ).toEqual(['QUEUE', 'EXPLORER', 'HISTORY', 'TOOLS', 'SETTINGS']);
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');
         expect(settings).toHaveTextContent(SETTINGS_ICON);
@@ -134,13 +125,13 @@ describe('DownloadsPanel', () => {
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
     });
 
-    it('shows the cutter in place of the queue and keeps the choice in the store', async () => {
+    it('shows the tools workspace in place of the queue and keeps the choice in the store', async () => {
         const user = userEvent.setup();
         render(<DownloadsPanel />);
 
-        await user.click(within(subNav()).getByRole('button', { name: 'CUT' }));
-        expect(useAppStore.getState().downloadsView).toBe('cut');
-        expect(within(subNav()).getByRole('button', { name: 'CUT' })).toHaveAttribute('aria-current', 'page');
+        await user.click(within(subNav()).getByRole('button', { name: 'TOOLS' }));
+        expect(useAppStore.getState().downloadsView).toBe('tools');
+        expect(within(subNav()).getByRole('button', { name: 'TOOLS' })).toHaveAttribute('aria-current', 'page');
         expect(within(subNav()).getByRole('button', { name: 'QUEUE' })).not.toHaveAttribute('aria-current');
         expect(screen.getByRole('region', { name: 'Cut a file' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();

@@ -9,6 +9,7 @@ import { useAppStore } from '../store/appStore';
 import { useConvertStore } from '../store/convertStore';
 import { useCutStore } from '../store/cutStore';
 import { useExplorerStore } from '../store/explorerStore';
+import { useMergeStore } from '../store/mergeStore';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ExplorerMediaPlayer } from './ExplorerMediaPlayer';
 import {
@@ -380,9 +381,10 @@ interface EntryItemProps {
     onContextMenu: (event: MouseEvent<HTMLElement>, entry: ExplorerEntry) => void;
     onSendToConvert: (entry: ExplorerEntry) => void;
     onSendToCut: (entry: ExplorerEntry) => void;
+    onSendToMerge: (entry: ExplorerEntry) => void;
 }
 
-function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onSendToConvert, onSendToCut }: EntryItemProps) {
+function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onSendToConvert, onSendToCut, onSendToMerge }: EntryItemProps) {
     const t = useTranslator();
     const itemRef = useRef<HTMLLIElement | null>(null);
     const kindLabel = t(`explorer.kind.${entry.kind}`);
@@ -429,16 +431,28 @@ function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onS
             {entry.kind !== 'directory' && (
                 <div className="explorer__item-actions">
                     {entry.kind === 'video' && (
-                        <button
-                            type="button"
-                            className="btn btn--small"
-                            title={`${t('explorer.action.convert')}: ${entry.name}`}
-                            onClick={() => {
-                                onSendToConvert(entry);
-                            }}
-                        >
-                            {t('explorer.action.convert')}
-                        </button>
+                        <>
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                title={`${t('explorer.action.convert')}: ${entry.name}`}
+                                onClick={() => {
+                                    onSendToConvert(entry);
+                                }}
+                            >
+                                {t('explorer.action.convert')}
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                title={`${t('explorer.action.merge')}: ${entry.name}`}
+                                onClick={() => {
+                                    onSendToMerge(entry);
+                                }}
+                            >
+                                {t('explorer.action.merge')}
+                            </button>
+                        </>
                     )}
                     <button
                         type="button"
@@ -459,8 +473,8 @@ function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onS
 export function ExplorerPanel() {
     const t = useTranslator();
     const language = useAppLanguage();
-    const setDownloadsView = useAppStore((state) => {
-        return state.setDownloadsView;
+    const openTools = useAppStore((state) => {
+        return state.openTools;
     });
     const directory = useExplorerStore((state) => {
         return state.directory;
@@ -622,13 +636,18 @@ export function ExplorerPanel() {
     }
 
     function handleSendToConvert(entry: ExplorerEntry): void {
-        setDownloadsView('convert');
+        openTools('convert');
         void useConvertStore.getState().addPaths([entry.path]);
     }
 
     function handleSendToCut(entry: ExplorerEntry): void {
-        setDownloadsView('cut');
+        openTools('cut');
         void useCutStore.getState().openPath(entry.path);
+    }
+
+    function handleSendToMerge(entry: ExplorerEntry): void {
+        openTools('merge');
+        void useMergeStore.getState().addPaths([entry.path]);
     }
 
     async function confirmTrash(entry: ExplorerEntry): Promise<void> {
@@ -697,13 +716,22 @@ export function ExplorerPanel() {
             }
         ];
         if (entry.kind === 'video') {
-            actions.push({
-                id: 'convert',
-                label: t('explorer.menu.convert'),
-                onSelect: () => {
-                    handleSendToConvert(entry);
+            actions.push(
+                {
+                    id: 'convert',
+                    label: t('explorer.menu.convert'),
+                    onSelect: () => {
+                        handleSendToConvert(entry);
+                    }
+                },
+                {
+                    id: 'merge',
+                    label: t('explorer.menu.merge'),
+                    onSelect: () => {
+                        handleSendToMerge(entry);
+                    }
                 }
-            });
+            );
         }
         if (entry.kind !== 'directory') {
             actions.push({
@@ -975,6 +1003,7 @@ export function ExplorerPanel() {
                                             onContextMenu={openItemMenu}
                                             onSendToConvert={handleSendToConvert}
                                             onSendToCut={handleSendToCut}
+                                            onSendToMerge={handleSendToMerge}
                                         />
                                     );
                                 }}

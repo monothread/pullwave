@@ -7,6 +7,7 @@ import { useAppStore } from '../store/appStore';
 import { useConvertStore } from '../store/convertStore';
 import { useCutStore } from '../store/cutStore';
 import { useExplorerStore, type ExplorerPlayerState } from '../store/explorerStore';
+import { useMergeStore } from '../store/mergeStore';
 import { filterAndSortEntries, formatBytes } from './explorerHelpers';
 import { LoadingMark } from './LoadingMark';
 import { VideoControls } from './VideoControls';
@@ -125,8 +126,8 @@ function ExplorerPlayerDialog({ playing, onClose }: ExplorerPlayerDialogProps) {
     const playStep = useExplorerStore((state) => {
         return state.playStep;
     });
-    const setDownloadsView = useAppStore((state) => {
-        return state.setDownloadsView;
+    const openTools = useAppStore((state) => {
+        return state.openTools;
     });
 
     const playable = useMemo(() => {
@@ -181,24 +182,37 @@ function ExplorerPlayerDialog({ playing, onClose }: ExplorerPlayerDialogProps) {
                             </>
                         )}
                         {entry.kind === 'video' && (
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                onClick={() => {
-                                    onClose();
-                                    setDownloadsView('convert');
-                                    void useConvertStore.getState().addPaths([entry.path]);
-                                }}
-                            >
-                                {t('explorer.action.convert')}
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    className="btn btn--small"
+                                    onClick={() => {
+                                        onClose();
+                                        openTools('convert');
+                                        void useConvertStore.getState().addPaths([entry.path]);
+                                    }}
+                                >
+                                    {t('explorer.action.convert')}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn--small"
+                                    onClick={() => {
+                                        onClose();
+                                        openTools('merge');
+                                        void useMergeStore.getState().addPaths([entry.path]);
+                                    }}
+                                >
+                                    {t('explorer.action.merge')}
+                                </button>
+                            </>
                         )}
                         <button
                             type="button"
                             className="btn btn--small"
                             onClick={() => {
                                 onClose();
-                                setDownloadsView('cut');
+                                openTools('cut');
                                 void useCutStore.getState().openPath(entry.path);
                             }}
                         >

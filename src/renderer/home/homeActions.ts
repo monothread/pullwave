@@ -6,7 +6,7 @@ import type { ActiveDownloadKind } from './homeData';
 
 const FIRST_LINK_SELECTOR = '.link-row__input';
 
-function showDownloader(view: 'queue' | 'cut'): void {
+function showDownloader(view: 'queue' | 'tools'): void {
     batchNavigation(() => {
         const app = useAppStore.getState();
         app.setTab('downloads');
@@ -18,8 +18,8 @@ export function showQueue(): void {
     showDownloader('queue');
 }
 
-export function showCut(): void {
-    showDownloader('cut');
+export function showTools(): void {
+    showDownloader('tools');
 }
 
 export function pasteLink(): void {

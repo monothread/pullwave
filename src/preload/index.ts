@@ -5,6 +5,7 @@ import type { ConvertRun } from '@shared/convert';
 import type { CutRun } from '@shared/cut';
 import type { LogBatch } from '@shared/logs';
 import type { MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
+import type { MergeRun } from '@shared/merge';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 
@@ -307,6 +308,33 @@ const convert: CyberApi['convert'] = {
     }
 };
 
+const merge: CyberApi['merge'] = {
+    choose: () => {
+        return ipcRenderer.invoke(IPC.mergeChoose);
+    },
+    probe: (path) => {
+        return ipcRenderer.invoke(IPC.mergeProbe, path);
+    },
+    pathForFile: (file) => {
+        return webUtils.getPathForFile(file);
+    },
+    start: (request) => {
+        return ipcRenderer.invoke(IPC.mergeStart, request);
+    },
+    cancel: () => {
+        return ipcRenderer.invoke(IPC.mergeCancel);
+    },
+    current: () => {
+        return ipcRenderer.invoke(IPC.mergeCurrent);
+    },
+    onProgress: (listener) => {
+        return subscribe<MergeRun>(IPC.eventMergeProgress, listener);
+    },
+    clear: () => {
+        return ipcRenderer.invoke(IPC.mergeClear);
+    }
+};
+
 const explorer: CyberApi['explorer'] = {
     list: (directory) => {
         return ipcRenderer.invoke(IPC.explorerList, directory);
@@ -432,6 +460,7 @@ const api: CyberApi = {
     programs,
     cut,
     convert,
+    merge,
     explorer,
     logs,
     getAppUpdateState: () => {

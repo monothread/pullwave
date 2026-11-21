@@ -53,6 +53,7 @@ import type { CutApi } from './cut';
 import type { ExplorerApi } from './explorer';
 import type { LogsApi } from './logs';
 import type { MangaApi, MangaOutputFormat } from './manga';
+import type { MergeApi } from './merge';
 import type { ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersions } from './programs';
 import type { ProgramId, ToolState } from './tools';
 import type { LlmProviderId, LlmStatus, LlmTokenSlot, SpeechProviderId } from './llm';
@@ -428,6 +429,7 @@ export interface CyberApi {
     programs: ProgramsApi;
     cut: CutApi;
     convert: ConvertApi;
+    merge: MergeApi;
     explorer: ExplorerApi;
     logs: LogsApi;
     getAppUpdateState: () => Promise<AppUpdateState>;

@@ -14,6 +14,7 @@ import type {
 import type { LlmStatus } from '@shared/llm';
 import type { LogLine, LogSource } from '@shared/logs';
 import type { LibraryManga, MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
+import type { MergeChooseResponse, MergeProbeResponse, MergeRun, MergeStartResponse } from '@shared/merge';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
 import { PROGRAM_IDS, type ProgramId, type ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
@@ -22,6 +23,7 @@ export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
 export type MockProgramsApi = { [K in keyof CyberApi['programs']]: ReturnType<typeof vi.fn> };
 export type MockCutApi = { [K in keyof CyberApi['cut']]: ReturnType<typeof vi.fn> };
 export type MockConvertApi = { [K in keyof CyberApi['convert']]: ReturnType<typeof vi.fn> };
+export type MockMergeApi = { [K in keyof CyberApi['merge']]: ReturnType<typeof vi.fn> };
 export type MockExplorerApi = { [K in keyof CyberApi['explorer']]: ReturnType<typeof vi.fn> };
 export type MockLogsApi = { [K in keyof CyberApi['logs']]: ReturnType<typeof vi.fn> };
 
@@ -48,16 +50,18 @@ export function makeProgramVersions(overrides: Partial<ProgramVersions> = {}): P
 }
 
 export interface MockApiHandle {
-    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut' | 'convert' | 'explorer' | 'logs'>]: ReturnType<typeof vi.fn> } & {
+    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut' | 'convert' | 'merge' | 'explorer' | 'logs'>]: ReturnType<typeof vi.fn> } & {
         manga: MockMangaApi;
         programs: MockProgramsApi;
         cut: MockCutApi;
         convert: MockConvertApi;
+        merge: MockMergeApi;
         explorer: MockExplorerApi;
         logs: MockLogsApi;
     };
     emitCutProgress: (run: CutRun) => void;
     emitConvertProgress: (run: ConvertRun) => void;
+    emitMergeProgress: (run: MergeRun) => void;
     emitLogLines: (source: LogSource, lines: LogLine[]) => void;
     emitProgramTool: (state: ToolState) => void;
     emitProgramUpdate: (state: ToolState) => void;
@@ -112,6 +116,7 @@ export function createMockApi(): MockApiHandle {
     const programToolListeners: Array<(state: ToolState) => void> = [];
     const cutListeners: Array<(run: CutRun) => void> = [];
     const convertListeners: Array<(run: ConvertRun) => void> = [];
+    const mergeListeners: Array<(run: MergeRun) => void> = [];
     const logListeners: Array<{ source: LogSource; listener: (lines: LogLine[]) => void }> = [];
     const programUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaToolListeners: Array<(state: ToolState) => void> = [];
@@ -187,6 +192,33 @@ export function createMockApi(): MockApiHandle {
         }),
         onProgress: vi.fn((listener: (run: ConvertRun) => void) => {
             return subscribe(convertListeners, listener);
+        }),
+        clear: vi.fn(async () => {
+            return undefined;
+        })
+    };
+
+    const merge: MockMergeApi = {
+        choose: vi.fn(async (): Promise<MergeChooseResponse> => {
+            return { ok: false, reason: 'cancelled' };
+        }),
+        probe: vi.fn(async (): Promise<MergeProbeResponse> => {
+            return { ok: false, reason: 'unreadable' };
+        }),
+        pathForFile: vi.fn((file: File): string => {
+            return `/dropped/${file.name}`;
+        }),
+        start: vi.fn(async (): Promise<MergeStartResponse> => {
+            return { ok: false, reason: 'invalid' };
+        }),
+        cancel: vi.fn(async () => {
+            return undefined;
+        }),
+        current: vi.fn(async (): Promise<MergeRun | null> => {
+            return null;
+        }),
+        onProgress: vi.fn((listener: (run: MergeRun) => void) => {
+            return subscribe(mergeListeners, listener);
         }),
         clear: vi.fn(async () => {
             return undefined;
@@ -470,6 +502,7 @@ export function createMockApi(): MockApiHandle {
         programs,
         cut,
         convert,
+        merge,
         explorer,
         logs,
         getSettings: vi.fn(async () => {
@@ -790,6 +823,11 @@ export function createMockApi(): MockApiHandle {
         },
         emitConvertProgress: (run) => {
             convertListeners.forEach((listener) => {
+                listener(run);
+            });
+        },
+        emitMergeProgress: (run) => {
+            mergeListeners.forEach((listener) => {
                 listener(run);
             });
         },

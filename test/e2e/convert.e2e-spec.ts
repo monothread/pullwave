@@ -52,7 +52,8 @@ async function launch(files: string[]): Promise<void> {
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
     await leaveHome(page);
-    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'CONVERT' }).click();
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'TOOLS' }).click();
+    await page.getByRole('tab', { name: 'CONVERT' }).click();
 }
 
 test.skip(!HAS_FFMPEG, 'needs the real ffmpeg of resources/bin (node scripts/fetch-binaries.mjs)');

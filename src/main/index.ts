@@ -15,11 +15,13 @@ import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
 import { registerCutHandlers } from './ipc/registerCutHandlers';
 import { registerConvertHandlers } from './ipc/registerConvertHandlers';
+import { registerMergeHandlers } from './ipc/registerMergeHandlers';
 import { registerExplorerHandlers } from './ipc/registerExplorerHandlers';
 import { registerProgramHandlers } from './ipc/registerProgramHandlers';
 import { ConvertService } from './services/convertService';
 import { CutPreview, createCutMediaHandler } from './services/cutPreview';
 import { CutService, createFfmpegRunner } from './services/cutService';
+import { MergeService } from './services/mergeService';
 import { ExplorerService, createExplorerMediaHandler } from './services/explorerService';
 import { ExplorerThumbnails } from './services/explorerThumbnails';
 import { removeLegacyBinaries } from './services/tools/legacyBinaries';
@@ -593,9 +595,16 @@ function bootstrap(): BootstrapResult {
             explorerThumbnails.cancelPending();
             explorerThumbnails.cancelPreview();
             anime?.stopBackgroundChecks();
-            return Promise.all([queue.shutdown(), converter.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
+            return Promise.all([queue.shutdown(), converter.shutdown(), merger.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
         };
-        if (queue.hasRunsToEnd() || converter.hasActiveRun() || anime?.queue.hasRunsToEnd() || manga?.queue.hasRunsToEnd() || manga?.hasProcessesToEnd()) {
+        if (
+            queue.hasRunsToEnd() ||
+            converter.hasActiveRun() ||
+            merger.hasActiveRun() ||
+            anime?.queue.hasRunsToEnd() ||
+            manga?.queue.hasRunsToEnd() ||
+            manga?.hasProcessesToEnd()
+        ) {
             event.preventDefault();
             shuttingDown = true;
             void endAll().finally(() => {
@@ -684,6 +693,33 @@ function bootstrap(): BootstrapResult {
             sendToRenderer(IPC.eventConvertProgress, run);
         }
     });
+    const merger = new MergeService({
+        runFfmpeg: () => {
+            return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
+        },
+        chooseFiles: async () => {
+            if (process.env.PULLWAVE_MERGE_FILES) {
+                return process.env.PULLWAVE_MERGE_FILES.split(delimiter).filter((entry) => {
+                    return entry.length > 0;
+                });
+            }
+            const options = {
+                properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+                filters: [
+                    { name: 'Videos', extensions: VIDEO_DIALOG_EXTENSIONS },
+                    { name: 'All files', extensions: ['*'] }
+                ]
+            };
+            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+            return result.canceled ? null : result.filePaths;
+        },
+        downloadsDir: () => {
+            return settingsStore.get().downloadDir || tryAppPath('downloads') || homedir();
+        },
+        send: (run) => {
+            sendToRenderer(IPC.eventMergeProgress, run);
+        }
+    });
     const explorerThumbnails = new ExplorerThumbnails({
         runFfmpeg: () => {
             return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
@@ -728,6 +764,7 @@ function bootstrap(): BootstrapResult {
     });
     registerCutHandlers(ipcMain, cutter, cutPreview);
     registerConvertHandlers(ipcMain, converter);
+    registerMergeHandlers(ipcMain, merger);
     registerExplorerHandlers(ipcMain, explorer);
     logWatchers = registerLogHandlers(ipcMain, { hub: processLogs, send: sendToRenderer });
     if (process.env.PULLWAVE_NO_TOOLS !== '1') {

@@ -7,6 +7,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useConvertStore } from '@renderer/store/convertStore';
 import { useCutStore } from '@renderer/store/cutStore';
 import { DEFAULT_EXPLORER_PREFS, useExplorerStore } from '@renderer/store/explorerStore';
+import { useMergeStore } from '@renderer/store/mergeStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 const FOLDER: ExplorerEntry = {
@@ -60,15 +61,17 @@ const initialApp = useAppStore.getState();
 const initialExplorer = useExplorerStore.getInitialState();
 const initialConvert = useConvertStore.getInitialState();
 const initialCut = useCutStore.getInitialState();
+const initialMerge = useMergeStore.getInitialState();
 let mock: MockApiHandle;
 
 beforeEach(() => {
     window.localStorage.clear();
     mock = installMockApi();
-    useAppStore.setState({ ...initialApp, tab: 'downloads', downloadsView: 'explorer' });
+    useAppStore.setState({ ...initialApp, tab: 'downloads', downloadsView: 'explorer', toolsMode: 'cut' });
     useExplorerStore.setState({ ...initialExplorer, ...DEFAULT_EXPLORER_PREFS });
     useConvertStore.setState({ ...initialConvert });
     useCutStore.setState({ ...initialCut });
+    useMergeStore.setState({ ...initialMerge });
     mock.api.explorer.list.mockResolvedValue({ ok: true, listing: LISTING });
 });
 
@@ -177,12 +180,39 @@ describe('ExplorerPanel', () => {
         await user.click(within(confirmFolderTrash).getByRole('button', { name: 'MOVE TO TRASH' }));
         expect(await screen.findByRole('alert')).toHaveTextContent('Only completely empty folders can be moved to the trash.');
 
+        mock.api.merge.probe.mockResolvedValueOnce({
+            ok: true,
+            media: {
+                path: VIDEO.path,
+                name: 'demo',
+                extension: '.mp4',
+                durationSeconds: 10,
+                width: 1280,
+                height: 720,
+                fps: 30,
+                videoCodec: 'h264',
+                pixelFormat: 'yuv420p',
+                videoTimebase: '15360',
+                hasAudio: true,
+                audioCodec: 'aac',
+                audioSampleRate: 48000,
+                audioChannels: 'stereo',
+                streamOrder: 'va'
+            }
+        });
         const videoCardAfterTrash = await screen.findByTestId('explorer-item-video');
         await user.click(within(videoCardAfterTrash).getByRole('button', { name: 'TO AUDIO' }));
-        expect(useAppStore.getState().downloadsView).toBe('convert');
+        expect(useAppStore.getState().downloadsView).toBe('tools');
+        expect(useAppStore.getState().toolsMode).toBe('convert');
+
+        await user.click(within(videoCardAfterTrash).getByRole('button', { name: 'MERGE' }));
+        expect(useAppStore.getState().downloadsView).toBe('tools');
+        expect(useAppStore.getState().toolsMode).toBe('merge');
+        expect(mock.api.merge.probe).toHaveBeenCalledWith(VIDEO.path);
 
         const audioCard = await screen.findByTestId('explorer-item-audio');
         await user.click(within(audioCard).getByRole('button', { name: 'CUT' }));
-        expect(useAppStore.getState().downloadsView).toBe('cut');
+        expect(useAppStore.getState().downloadsView).toBe('tools');
+        expect(useAppStore.getState().toolsMode).toBe('cut');
     });
 });

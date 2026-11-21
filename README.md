@@ -43,8 +43,8 @@ Pullwave brings three workspaces together in a single desktop app:
 
 - **Flexible video & audio downloads:** pick maximum resolution, container (`mp4`, `mkv`, `webm`), audio-only (`mp3`, `m4a`, `opus`), playlists, subtitles, and browser cookies for authenticated videos.
 - **Live-stream recording:** record from the start, wait for scheduled streams, and keep partial recordings safely if the stream drops.
-- **Built-in media explorer:** browse local folders filtered strictly to directories, videos, and audio files, with cached FFmpeg video thumbnails, a built-in video/audio player, quick links to Convert/Cut, and right-click actions (new folder, rename, show in folder, move to trash with confirmation).
-- **Built-in media cutter & audio converter:** extract multiple frame-accurate clips (or audio-only clips) from any local video or audio file with inline preview, or batch-convert videos into `mp3`, `m4a`, `opus`, `flac`, or `wav`.
+- **Built-in media explorer:** browse local folders filtered strictly to directories, videos, and audio files, with cached FFmpeg video thumbnails, a built-in video/audio player, quick links to Convert, Merge, and Cut, and right-click actions (new folder, rename, show in folder, move to trash with confirmation).
+- **Built-in media tools (Cut, Convert & Merge):** extract multiple frame-accurate clips (or audio-only clips) from any local video or audio file with inline preview, batch-convert videos into `mp3`, `m4a`, `opus`, `flac`, or `wav`, or merge multiple videos in custom order with automatic fast-copy / re-encode normalization.
 - **Anime library & player:** group seasons into series, track watched status and resume positions, stream without downloading, and watch with fansub-styled subtitles in every available language.
 - **AI subtitle tools (BYOK):** translate existing subtitles or generate subtitles directly from episode audio using your own OpenAI, Claude, Gemini, DeepSeek, GLM, Kimi, or custom OpenAI-compatible API key.
 - **Full manga workflow:** install Mihon/Tachiyomi extension repositories, search across all installed sources at once, organize with custom groups, download as CBZ with `ComicInfo.xml`, and read in single-page, double-page, vertical scroll, or webtoon modes with auto-scroll.
@@ -100,7 +100,7 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 
 | Section | Tabs |
 |---|---|
-| **VIDEO DOWNLOADER** | `QUEUE` · `HISTORY` · `EXPLORER` · `CUT` · `CONVERT` · `⚙` |
+| **VIDEO DOWNLOADER** | `QUEUE` · `EXPLORER` · `HISTORY` · `TOOLS` · `⚙` |
 | **ANIME** | `SCHEDULE` · `UPDATES` · `SEARCH` · `LIBRARY` · `HISTORY` · `DOWNLOADS` · `⚙` |
 | **MANGA** | `BROWSE` · `SEARCH` · `UPDATES` · `LIBRARY` · `HISTORY` · `EXTENSIONS` · `DOWNLOADS` · `⚙` |
 
@@ -131,21 +131,16 @@ Browse your configured downloads folder directly inside Pullwave:
 - Confined to your configured **downloads directory** (and its subfolders) and shows **only folders, videos, and audio files** — non-media and hidden files are filtered out automatically, with search and type filters (**ALL**, **VIDEOS**, **AUDIO**), persistent sort and view preferences, breadcrumb navigation, **UP**, **REFRESH**, and a single **OPEN FOLDER** button next to the item count summary.
 - Video cards load on-demand FFmpeg thumbnails backed by a session disk cache with a 30-minute TTL.
 - Click any folder card to enter it, or click any video/audio card to play it inside the built-in media player (with Previous/Next navigation, `VideoControls`, keyboard shortcuts, `Escape`/mouse-back close, and automatic FFmpeg fallback transcoding when a codec is unsupported).
-- Media cards include quick **TO AUDIO** and **CUT** actions; clicking **SHOW FILE** in the queue, history, or converter reveals and highlights the file directly inside the Explorer tab; right-clicking a card or the background opens a context menu next to the cursor with **New folder**, **Rename** (preserving file extensions), **Show in folder**, **Convert to audio**, **Cut**, and **Move to trash** (for media files and completely empty folders, with a confirmation dialog).
+- Media cards include quick **TO AUDIO**, **MERGE**, and **CUT** actions; clicking **SHOW FILE** in the queue, history, converter, or merger reveals and highlights the file directly inside the Explorer tab; right-clicking a card or the background opens a context menu next to the cursor with **New folder**, **Rename** (preserving file extensions), **Show in folder**, **Convert to audio**, **Add to merge**, **Cut**, and **Move to trash** (for media files and completely empty folders, with a confirmation dialog).
 
-### Cut
-![Cut tab with two marked segments](docs/screenshots/neon-tokyo-cut.png)
+### Tools (Cut, Convert & Merge)
+![Cut mode with two marked segments](docs/screenshots/neon-tokyo-cut.png)
 
-Trim any local video or audio file into one or more clips without leaving the app:
-- Click **CHOOSE FILE** or drag and drop a file onto the panel to see its thumbnail/cover, media type (**VIDEO** / **AUDIO**), and duration.
-- Add as many start/end ranges as you need (`m:ss`, `h:mm:ss`, or seconds with decimals such as `1:34.5`). Overlapping ranges are supported, invalid ranges are flagged inline, and **▶** previews only that segment inside the built-in player.
-- Cuts are **frame-exact** (re-encoded in the original format, or extracted as audio-only using your preferred audio format) and saved to `<name> - cuts/` inside your downloads folder without overwriting existing files. `ffmpeg` runs at low priority with limited CPU threads so the UI stays responsive, and **CANCEL** stops immediately while keeping finished clips.
+A unified **TOOLS** tab brings **CUT**, **CONVERT**, and **MERGE** together behind a mode switcher (preserving each tool's state and displaying an active indicator if another mode is running in the background):
 
-### Convert
-Batch-convert one or more local videos into audio files using the bundled `ffmpeg`:
-- Add files via **CHOOSE VIDEOS**, drag and drop, or directly from the **Explorer** tab.
-- Pick the output format (**MP3**, **M4A**, **OPUS**, **FLAC**, or **WAV**) and destination (**Downloads folder**, **Same folder as the video**, or a **Custom folder**).
-- Tracks per-file progress sequentially at low CPU priority, skips videos without an audio track cleanly, avoids overwriting existing files, and lets you **CANCEL** mid-batch while keeping completed audio files.
+- **Cut:** click **CHOOSE FILE** or drag and drop a video/audio file to see its thumbnail/cover, media type (**VIDEO** / **AUDIO**), and duration. Add as many start/end ranges as you need (`m:ss`, `h:mm:ss`, or seconds with decimals such as `1:34.5`), preview any segment with **▶**, and export frame-exact clips (or audio-only clips in your preferred audio format) into `<name> - cuts/` inside your downloads folder without overwriting existing files.
+- **Convert:** batch-convert one or more videos into **MP3**, **M4A**, **OPUS**, **FLAC**, or **WAV** via **CHOOSE VIDEOS**, drag and drop, or directly from **Explorer**. Choose the destination (**Downloads folder**, **Same folder as the video**, or a **Custom folder**), track per-file progress sequentially at low CPU priority, skip videos without an audio track cleanly, and **CANCEL** mid-batch while keeping completed audio files.
+- **Merge:** join two or more local videos (including repeated clips) into a single file. Reorder videos with **↑** / **↓** controls, set an optional output name, container (**MP4**, **MKV**, or **WEBM**), and destination (**Downloads folder**, **Folder of the first video**, or a **Custom folder**). Compatible videos (matching container, codecs, resolution, pixel format, exact fps, timebase, audio specs, and stream order) are merged quickly via lossless stream copy (**FAST COPY**), while mixed or incompatible videos are automatically normalized and re-encoded (**RE-ENCODE**, synthesizing silence when mixing silent and audio clips).
 
 ### Quality, cookies, live streams & settings
 ![Video downloader settings](docs/screenshots/neon-tokyo-settings.png)

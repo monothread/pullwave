@@ -7,7 +7,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { animeNews, mangaNews } from '../spotlight/spotlightData';
 import { useAnimeStore } from '../store/animeStore';
 import { useMangaStore } from '../store/mangaStore';
-import { openAnime, openManga, pasteLink, showCut } from './homeActions';
+import { openAnime, openManga, pasteLink, showTools } from './homeActions';
 import { activeTotal } from './homeData';
 import { useActiveCounts } from '../hooks/useActiveCounts';
 import { useShownLibrary } from '../hooks/useShownManga';
@@ -153,7 +153,7 @@ export function SectionCards() {
                 busy: running + waiting > 0,
                 actions: [
                     { label: 'home.card.paste', onClick: pasteLink },
-                    { label: 'downloads.nav.cut', onClick: showCut }
+                    { label: 'downloads.nav.tools', onClick: showTools }
                 ]
             },
             anime: {

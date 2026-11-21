@@ -380,8 +380,12 @@ MATRICES.forEach((matrix) => {
         await expect(page.getByText(LONG_TITLE)).toBeVisible();
         await audit(session, 'history', report, matrix);
 
-        await downloads.getByRole('button', { name: 'CUT', exact: true }).click();
-        await audit(session, 'cut', report, matrix);
+        await downloads.getByRole('button', { name: 'TOOLS', exact: true }).click();
+        await audit(session, 'tools-cut', report, matrix);
+        await page.getByRole('tab', { name: 'CONVERT' }).click();
+        await audit(session, 'tools-convert', report, matrix);
+        await page.getByRole('tab', { name: 'MERGE' }).click();
+        await audit(session, 'tools-merge', report, matrix);
 
         await downloads.getByRole('button', { name: 'SETTINGS', exact: true }).click();
         await audit(session, 'downloads-settings', report, matrix);

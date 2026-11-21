@@ -1,6 +1,6 @@
 # Pullwave — Documentation
 
-Desktop app for Linux and Windows (Electron + React + TypeScript) with a cyberpunk look and flat themes: a video downloader (`yt-dlp`, with a queue, a history, a media explorer, a cutter and a video-to-audio converter), an anime library and player (`ani-cli`) and a manga reader (Suwayomi-Server and the Mihon/Tachiyomi extensions).
+Desktop app for Linux and Windows (Electron + React + TypeScript) with a cyberpunk look and flat themes: a video downloader (`yt-dlp`, with a queue, a media explorer, a history, and unified media tools for cutting, converting to audio, and merging videos), an anime library and player (`ani-cli`) and a manga reader (Suwayomi-Server and the Mihon/Tachiyomi extensions).
 
 > Every download made with the program is at the user's own risk and responsibility; the authors are not responsible
 > for it. The project-level statement is in [`../DISCLAIMER.md`](../DISCLAIMER.md) and must stay linked from the README

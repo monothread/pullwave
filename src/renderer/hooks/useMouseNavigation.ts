@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { MangaListKind } from '@shared/manga';
 import { useAnimeStore, type AnimeBrowseView, type AnimeSelection, type AnimeView } from '../store/animeStore';
-import { useAppStore, type DownloadsView, type Tab } from '../store/appStore';
+import { useAppStore, type DownloadsView, type Tab, type ToolsMode } from '../store/appStore';
 import { useMangaStore, type MangaBrowseView, type MangaSelection, type MangaView } from '../store/mangaStore';
 import { useCutStore } from '../store/cutStore';
 import { useExplorerStore } from '../store/explorerStore';
@@ -27,6 +27,7 @@ export interface MangaPage {
 export interface NavigationSnapshot {
     tab: Tab;
     downloadsView: DownloadsView;
+    toolsMode: ToolsMode;
     view: AnimeView;
     returnView: AnimeBrowseView;
     selection: AnimeSelection | null;
@@ -40,7 +41,7 @@ export function snapshotKey(snapshot: NavigationSnapshot): string {
     const selection = snapshot.selection === null ? '' : String(snapshot.selection.result.index);
     const { manga } = snapshot;
     const mangaKey = [manga.view, manga.previousView, manga.sourceId ?? '', manga.mode, manga.settingsOpen, manga.selection?.manga.remoteId ?? '', manga.selectionFrom, manga.librarySeries ?? '', manga.libraryGroup ?? ''].join(':');
-    return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? '', snapshot.librarySeason ?? '', mangaKey].join('|');
+    return [snapshot.tab, snapshot.downloadsView, snapshot.toolsMode, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? '', snapshot.librarySeason ?? '', mangaKey].join('|');
 }
 
 function readMangaPage(): MangaPage {
@@ -50,8 +51,8 @@ function readMangaPage(): MangaPage {
 
 function readSnapshot(): NavigationSnapshot {
     const { view, returnView, selection, libraryFocus, librarySeries, librarySeason } = useAnimeStore.getState();
-    const { tab, downloadsView } = useAppStore.getState();
-    return { tab, downloadsView, view, returnView, selection, libraryFocus, librarySeries, librarySeason, manga: readMangaPage() };
+    const { tab, downloadsView, toolsMode } = useAppStore.getState();
+    return { tab, downloadsView, toolsMode, view, returnView, selection, libraryFocus, librarySeries, librarySeason, manga: readMangaPage() };
 }
 
 function showMangaPage(page: MangaPage): void {
@@ -79,6 +80,7 @@ function showMangaPage(page: MangaPage): void {
 function showSnapshot(snapshot: NavigationSnapshot): void {
     useAppStore.getState().setTab(snapshot.tab);
     useAppStore.getState().setDownloadsView(snapshot.downloadsView);
+    useAppStore.getState().setToolsMode(snapshot.toolsMode);
     useAnimeStore.setState({
         view: snapshot.view,
         returnView: snapshot.returnView,

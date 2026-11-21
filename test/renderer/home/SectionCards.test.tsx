@@ -10,7 +10,7 @@ import { makeAnime, makeAnimeJob, makeEpisode, makeStatus } from '../../helpers/
 import { installMockApi, makeJob } from '../../helpers/mockApi';
 
 const actions = vi.hoisted(() => {
-    return { openAnime: vi.fn(), openManga: vi.fn(), pasteLink: vi.fn(), showCut: vi.fn() };
+    return { openAnime: vi.fn(), openManga: vi.fn(), pasteLink: vi.fn(), showTools: vi.fn() };
 });
 vi.mock('@renderer/home/homeActions', () => {
     return actions;
@@ -112,7 +112,7 @@ describe('SectionCards', () => {
         render(<SectionCards />);
         const paste = screen.getByRole('button', { name: 'PASTE A LINK: VIDEO DOWNLOADER' });
         expect(paste).toHaveClass('btn', 'btn--primary');
-        expect(screen.getByRole('button', { name: 'CUT: VIDEO DOWNLOADER' })).not.toHaveClass('btn--primary');
+        expect(screen.getByRole('button', { name: 'TOOLS: VIDEO DOWNLOADER' })).not.toHaveClass('btn--primary');
         expect(within(card('ANIME')).getAllByRole('button').map((button) => {
             return button.textContent;
         })).toEqual(['UPDATES', 'LIBRARY']);
@@ -121,8 +121,8 @@ describe('SectionCards', () => {
         })).toEqual(['UPDATES', 'LIBRARY']);
         fireEvent.click(paste);
         expect(actions.pasteLink).toHaveBeenCalledTimes(1);
-        fireEvent.click(screen.getByRole('button', { name: 'CUT: VIDEO DOWNLOADER' }));
-        expect(actions.showCut).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: 'TOOLS: VIDEO DOWNLOADER' }));
+        expect(actions.showTools).toHaveBeenCalledTimes(1);
         fireEvent.click(screen.getByRole('button', { name: 'UPDATES: ANIME' }));
         fireEvent.click(screen.getByRole('button', { name: 'LIBRARY: ANIME' }));
         expect(actions.openAnime.mock.calls).toEqual([['updates'], ['library']]);

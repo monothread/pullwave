@@ -1,7 +1,6 @@
-import { useEffect, useState, type DragEvent } from 'react';
+import { useEffect } from 'react';
 import type { MessageKey } from '@shared/i18n';
 import type { CutRun, CutSegmentState, CutSegmentStatus } from '@shared/cut';
-import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useCutStore, type CutThumbnail } from '../store/cutStore';
@@ -10,6 +9,7 @@ import { CutPreviewPlayer } from './CutPreviewPlayer';
 import { checkRow, formatClock, problemKey, segmentsToCut } from './cutText';
 import { TextField, ToggleField } from './fields';
 import { LoadingMark } from './LoadingMark';
+import { SmoothProgressBar, useFileDrop } from './mediaToolHelpers';
 
 const STATUS_KEYS: Record<CutSegmentStatus, MessageKey> = {
     waiting: 'cut.status.waiting',
@@ -33,20 +33,6 @@ const STATUS_BADGES: Record<CutSegmentStatus, string> = {
     cancelled: 'badge--cancelled'
 };
 
-interface PartBarProps {
-    percent: number;
-    label: string;
-}
-
-function PartBar({ percent, label }: PartBarProps) {
-    const shown = useSmoothPercent(percent);
-    return (
-        <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={label}>
-            <div className="progress__bar progress__bar--smooth" style={{ width: `${shown}%` }} />
-        </div>
-    );
-}
-
 interface PartRowProps {
     state: CutSegmentState;
     number: number;
@@ -61,7 +47,7 @@ function PartRow({ state, number }: PartRowProps) {
                 <span className="cut__part-title">{title}</span>
                 <span className={`badge ${STATUS_BADGES[state.status]}`}>{t(STATUS_KEYS[state.status])}</span>
             </div>
-            {state.status === 'cutting' && <PartBar percent={state.percent} label={t('cut.progressLabel', { number })} />}
+            {state.status === 'cutting' && <SmoothProgressBar percent={state.percent} label={t('cut.progressLabel', { number })} />}
             {state.status === 'waiting' && (
                 <div className="progress progress--waiting" role="progressbar" aria-label={t('cut.waitingLabel', { number })}>
                     <div className="progress__bar" />
@@ -110,11 +96,11 @@ function CutThumb({ thumbnail, kind }: CutThumbProps) {
     );
 }
 
-function carriesFiles(event: { dataTransfer: Pick<DataTransfer, 'types'> | null }): boolean {
-    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+export interface CutPanelProps {
+    skipInit?: boolean;
 }
 
-export function CutPanel() {
+export function CutPanel({ skipInit = false }: CutPanelProps) {
     const t = useTranslator();
     const downloadDir = useAppStore((state) => {
         return state.settings.downloadDir;
@@ -159,9 +145,11 @@ export function CutPanel() {
     const clear = useCutStore((state) => {
         return state.clear;
     });
-    const [dragging, setDragging] = useState(false);
 
     useEffect(() => {
+        if (skipInit) {
+            return;
+        }
         let unsubscribe: (() => void) | null = null;
         let stopped = false;
         void init().then((stop) => {
@@ -175,53 +163,14 @@ export function CutPanel() {
             stopped = true;
             unsubscribe?.();
         };
-    }, [init]);
+    }, [init, skipInit]);
 
     const running = run?.status === 'running';
     const busy = choosing || starting || running;
 
-    useEffect(() => {
-        const keepAway = (event: globalThis.DragEvent): void => {
-            if (carriesFiles(event)) {
-                event.preventDefault();
-            }
-        };
-        window.addEventListener('dragover', keepAway);
-        window.addEventListener('drop', keepAway);
-        return () => {
-            window.removeEventListener('dragover', keepAway);
-            window.removeEventListener('drop', keepAway);
-        };
-    }, []);
-
-    function onDragEnter(event: DragEvent<HTMLElement>): void {
-        if (carriesFiles(event)) {
-            event.preventDefault();
-            setDragging(true);
-        }
-    }
-
-    function onDragOver(event: DragEvent<HTMLElement>): void {
-        if (carriesFiles(event)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = busy ? 'none' : 'copy';
-        }
-    }
-
-    function onDragLeave(event: DragEvent<HTMLElement>): void {
-        if (carriesFiles(event) && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setDragging(false);
-        }
-    }
-
-    function onDrop(event: DragEvent<HTMLElement>): void {
-        if (!carriesFiles(event)) {
-            return;
-        }
-        event.preventDefault();
-        setDragging(false);
-        const file = event.dataTransfer.files[0];
-        if (busy || file === undefined) {
+    const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop(busy, (files) => {
+        const file = files[0];
+        if (file === undefined) {
             return;
         }
         const path = window.api.cut.pathForFile(file);
@@ -230,7 +179,7 @@ export function CutPanel() {
             return;
         }
         void openPath(path);
-    }
+    });
     const segments = media === null ? null : segmentsToCut(rows, media.durationSeconds);
     const firstFile = run?.segments.find((part) => {
         return part.outputPath !== null;

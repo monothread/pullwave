@@ -3,11 +3,12 @@
 ## Folder structure
 ```
 src/
-  shared/        types.ts (Settings, DownloadJob, JobStatus, HistoryEntry, AppUpdateState, CyberApi, ...), constants.ts (IPC channels, defaults), url.ts (isValidHttpUrl), mediaExtensions.ts (video/audio extensions), convert.ts (converter contracts), explorer.ts (explorer contracts)
+  shared/        types.ts (Settings, DownloadJob, JobStatus, HistoryEntry, AppUpdateState, CyberApi, ...), constants.ts (IPC channels, defaults), url.ts (isValidHttpUrl), mediaExtensions.ts (video/audio extensions), convert.ts (converter contracts), merge.ts (merger contracts), explorer.ts (explorer contracts)
   main/
     index.ts                    # window, lifecycle, wiring
     ipc/registerHandlers.ts     # typed IPC channels
     ipc/registerConvertHandlers.ts  # convert:* IPC channels
+    ipc/registerMergeHandlers.ts    # merge:* IPC channels
     ipc/registerExplorerHandlers.ts # explorer:* IPC channels
     services/
       binaryResolver.ts         # which yt-dlp / ffmpeg to run (custom path > the one the app installed; never the system's)
@@ -18,6 +19,7 @@ src/
       errorMapper.ts            # stderr -> { code, title, hint, raw }
       queueManager.ts           # queue + concurrency (`maxConcurrent`, which the sanitizer always sets to `CONCURRENT_DOWNLOADS`, 3: no screen changes it)
       convertArgs.ts / convertService.ts   # batch video-to-audio conversion with bundled ffmpeg
+      mergeArgs.ts / mergeService.ts       # ordered video merging with auto fast-copy / re-encode normalization via bundled ffmpeg
       explorerService.ts / explorerThumbnails.ts   # filtered directory listing, file operations, cached thumbnails and fallback preview transcoding
       jsonStore.ts / settingsSanitizer.ts / settingsStore.ts / historyStore.ts
       appUpdateService.ts       # app self-update state machine (electron-updater)
@@ -61,14 +63,14 @@ src/
     sound/ uiSound (the tones of the navigation, Web Audio)
     theme/bp-shell.css, bp-home.css, bp-library.css, bp-downloads.css (the structure of D-127 and D-128; see DESIGN.md), bp-fun.css (the effects layer), resolveTheme.ts
     i18n/ language (system locale), catalogs, useTranslator (React hook)
-    components/ DownloadsPanel (QUEUE / HISTORY / EXPLORER / CUT / CONVERT / SETTINGS of the video downloader), UrlInput, QueueList, JobCard, SettingsPanel (scope: global / downloads / anime), HistoryList, ErrorBanner, BinaryStatus,
+    components/ DownloadsPanel (QUEUE / EXPLORER / HISTORY / TOOLS / SETTINGS of the video downloader), UrlInput, QueueList, JobCard, SettingsPanel (scope: global / downloads / anime), HistoryList, ErrorBanner, BinaryStatus,
                 Toast, UpdateBanner, UpdateActions, fields,
                 AnimePanel, AnimeSearch, AnimeDetail, AnimeJobs, AnimeLibrary, AnimeHistory, AnimePlayer, AnimeStreamPlayer, AnimeRemove,
-                CutPanel (CUT tab), ConvertPanel (CONVERT tab), ExplorerPanel / ExplorerMediaPlayer / explorerHelpers (EXPLORER tab), ErrorNotice / ErrorDetailsDialog (the window with the details of an error), MangaLanguageSetting,
+                MediaToolsPanel (TOOLS tab with CUT / CONVERT / MERGE mode switcher), CutPanel, ConvertPanel, MergePanel, mediaToolHelpers (shared file drop & smooth progress bar), ExplorerPanel / ExplorerMediaPlayer / explorerHelpers (EXPLORER tab), ErrorNotice / ErrorDetailsDialog (the window with the details of an error), MangaLanguageSetting,
                 TopBarClock / clockText (the clock of the top bar), SectionIcon (the pictures of the sections), TopBar, SideNav, GlobalSearch, DownloadsIndicator, SoundToggle, Backdrop, Drawn,
                 VideoControls (the player's own control bar), PlayerSettings (its gear), SubtitleManagerDialog / SubtitleSizeControl (the window of the subtitles and the size, D-165), subtitleChoice / subtitleScale (what the viewer chose), SeriesFields (series name and season)
     hooks/ useSpatialNavigation (arrow keys move the focus), useGamepadNavigation (a gamepad drives the app), useClock (the time of the top bar), useAutoSaveSettings (debounced settings auto-save), useMouseNavigation + navigationHistory + scrollRestoration (back/forward buttons of the mouse, with the scroll of each page), useFullscreenIdle (controls hide in fullscreen)
-    store/ (zustand): appStore, animeStore, mangaStore, cutStore, convertStore, explorerStore, programsStore, backdropStore, uiPrefsStore, sortPrefsStore, and their helpers (doneLinger, keyedRefresh, libraryEntryRefresh, scheduleChoice, subtitleActivity)
+    store/ (zustand): appStore, animeStore, mangaStore, cutStore, convertStore, mergeStore, explorerStore, programsStore, backdropStore, uiPrefsStore, sortPrefsStore, and their helpers (doneLinger, keyedRefresh, libraryEntryRefresh, scheduleChoice, subtitleActivity)
 test/            # unit tests mirroring src
 test/e2e/        # Playwright-Electron (fake yt-dlp via stub)
 scripts/         # fetch-binaries.mjs (per platform); screenshots/ (the script of docs/screenshots, `npm run screenshots`)
@@ -82,7 +84,7 @@ Renderer (React) → `window.api` (preload, typed) → IPC → `registerHandlers
 
 Closing the window: `decideCloseAction` → `hide` (tray available and `closeToTray` on), `ask-quit` (ask when downloads are pending, then `app.quit()`) or `allow` (already quitting). The app is single-instance; a second launch shows the window.
 
-On `before-quit`, when something is still running, the main process holds the quit, cancels the cut and any pending explorer thumbnail/preview work, stops the background checks of the anime and awaits `shutdown()` of the video queue, the converter, the anime queue and the manga runtime before quitting; `will-quit` disposes the explorer preview directory. The video queue starts no queued job; a live recording is stopped (SIGINT, file kept) and waited for up to `LIVE_STOP_TIMEOUT_MS` (8 s); a job with a pause requested is kept as paused; every other run is cancelled (SIGTERM to its process tree) and its partial files are deleted. No download (or ffmpeg job) is left running in the background after the app closes.
+On `before-quit`, when something is still running, the main process holds the quit, cancels the cut and any pending explorer thumbnail/preview work, stops the background checks of the anime and awaits `shutdown()` of the video queue, the converter, the merger, the anime queue and the manga runtime before quitting; `will-quit` disposes the explorer preview directory. The video queue starts no queued job; a live recording is stopped (SIGINT, file kept) and waited for up to `LIVE_STOP_TIMEOUT_MS` (8 s); a job with a pause requested is kept as paused; every other run is cancelled (SIGTERM to its process tree) and its partial files are deleted. No download (or ffmpeg job) is left running in the background after the app closes.
 
 ## Anime section (Linux and Windows)
 Same shape as the rest: renderer (`animeStore`, `Anime*` components) → `window.api` → `anime:*` IPC (`registerAnimeHandlers`) → `AniCliService` → `aniCliRunner` → `busybox sh pullwave-run.sh ani-cli …` with an isolated environment: on Linux a `PATH` of links to the busybox applets, curl, yt-dlp and ffmpeg made in `userData/anime/tools`; on Windows no links (BusyBox for Windows runs its applets itself) and a `Path` of the bundled folders plus the folders of the chosen yt-dlp and ffmpeg, with only the system variables Windows programs need passed on (`SystemRoot`, `TEMP`, `USERPROFILE`...), and the paths given to the shell with forward slashes. ani-cli has no structured output, so searching and listing work by handing it `pullwave_menu` as its menu program (a function defined by `pullwave-run.sh`, like the stand-in player and `tput`), which reports every choice on stderr; a choice is later picked with `-S <position>` and `-e <episode>`. See D-036.

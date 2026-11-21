@@ -82,11 +82,12 @@ function mount(): { unmount: () => void } {
 
 describe('snapshotKey', () => {
     const manga: MangaPage = { view: 'browse', previousView: 'browse', sourceId: null, mode: 'popular', settingsOpen: false, selection: null, selectionFrom: 'browse', librarySeries: null, libraryGroup: null };
-    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null, librarySeason: null, manga };
+    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', toolsMode: 'cut', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null, librarySeason: null, manga };
 
     it('joins the parts that make a page', () => {
-        expect(snapshotKey(base)).toBe('anime|queue|library|library|||||browse:browse::popular:false::browse::');
-        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren', librarySeason: 12 })).toBe('anime|queue|library|library|2|7|series-frieren|12|browse:browse::popular:false::browse::');
+        expect(snapshotKey(base)).toBe('anime|queue|cut|library|library|||||browse:browse::popular:false::browse::');
+        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren', librarySeason: 12 })).toBe('anime|queue|cut|library|library|2|7|series-frieren|12|browse:browse::popular:false::browse::');
+        expect(snapshotKey({ ...base, downloadsView: 'tools', toolsMode: 'merge' })).not.toBe(snapshotKey({ ...base, downloadsView: 'tools', toolsMode: 'cut' }));
     });
 
     it('differs between the screens of the manga section, the sources, the modes, the settings of a source and the mangas open', () => {
@@ -466,7 +467,7 @@ describe('useMouseNavigation', () => {
         mount();
         setDownloadsView('history');
         act(() => {
-            useAppStore.getState().setDownloadsView('cut');
+            useAppStore.getState().openTools('cut');
         });
         act(() => {
             useCutStore.setState({ preview: PREVIEW });
@@ -475,10 +476,25 @@ describe('useMouseNavigation', () => {
         const event = press(MOUSE_BACK_BUTTON);
         expect(event.defaultPrevented).toBe(true);
         expect(useCutStore.getState().preview).toBeNull();
-        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'cut' });
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'tools', toolsMode: 'cut' });
 
         press(MOUSE_BACK_BUTTON);
         expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'history' });
+    });
+
+    it('goes back and forward between tool modes in the video downloader', () => {
+        mount();
+        act(() => {
+            useAppStore.getState().openTools('cut');
+        });
+        act(() => {
+            useAppStore.getState().setToolsMode('merge');
+        });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'tools', toolsMode: 'cut' });
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'tools', toolsMode: 'merge' });
     });
 
     it('does not go forward while the preview of a cut is open', () => {

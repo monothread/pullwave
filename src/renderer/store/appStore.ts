@@ -19,7 +19,8 @@ import type {
 } from '@shared/types';
 
 export type Tab = 'home' | 'downloads' | 'anime' | 'manga' | 'settings';
-export type DownloadsView = 'queue' | 'history' | 'explorer' | 'cut' | 'convert' | 'settings';
+export type DownloadsView = 'queue' | 'explorer' | 'history' | 'tools' | 'settings';
+export type ToolsMode = 'cut' | 'convert' | 'merge';
 export type NoticeKind = 'error' | 'info';
 
 export interface Notice {
@@ -38,6 +39,7 @@ export const INITIAL_LLM_STATUS: LlmStatus = { canStore: true, providers: [] };
 export interface AppState {
     tab: Tab;
     downloadsView: DownloadsView;
+    toolsMode: ToolsMode;
     jobs: DownloadJob[];
     history: HistoryEntry[];
     settings: Settings;
@@ -51,6 +53,8 @@ export interface AppState {
     llmStatus: LlmStatus;
     setTab: (tab: Tab) => void;
     setDownloadsView: (view: DownloadsView) => void;
+    setToolsMode: (mode: ToolsMode) => void;
+    openTools: (mode: ToolsMode) => void;
     setNotice: (notice: Notice | null) => void;
     pushToast: (message: string) => number;
     dismissToast: (id: number) => void;
@@ -109,6 +113,7 @@ export const useAppStore = create<AppState>((set, get) => {
     return {
         tab: 'home',
         downloadsView: 'queue',
+        toolsMode: 'cut',
         jobs: [],
         history: [],
         settings: DEFAULT_SETTINGS,
@@ -127,6 +132,14 @@ export const useAppStore = create<AppState>((set, get) => {
 
         setDownloadsView: (downloadsView) => {
             set({ downloadsView });
+        },
+
+        setToolsMode: (toolsMode) => {
+            set({ toolsMode });
+        },
+
+        openTools: (toolsMode) => {
+            set({ downloadsView: 'tools', toolsMode });
         },
 
         setNotice: (notice) => {

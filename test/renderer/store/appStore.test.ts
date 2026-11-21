@@ -43,6 +43,11 @@ describe('useAppStore basics', () => {
         useAppStore.getState().setDownloadsView('history');
         expect(useAppStore.getState().downloadsView).toBe('history');
         expect(useAppStore.getState().tab).toBe('home');
+        useAppStore.getState().setToolsMode('merge');
+        expect(useAppStore.getState().toolsMode).toBe('merge');
+        useAppStore.getState().openTools('convert');
+        expect(useAppStore.getState().downloadsView).toBe('tools');
+        expect(useAppStore.getState().toolsMode).toBe('convert');
         useAppStore.getState().setDownloadsView('queue');
         expect(useAppStore.getState().downloadsView).toBe('queue');
     });

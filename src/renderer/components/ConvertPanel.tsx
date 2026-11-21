@@ -1,7 +1,6 @@
-import { useEffect, useState, type DragEvent } from 'react';
+import { useEffect } from 'react';
 import { CONVERT_AUDIO_FORMATS, CONVERT_OUTPUT_MODES, type ConvertAudioFormat, type ConvertItemState, type ConvertItemStatus, type ConvertOutputMode, type ConvertRun } from '@shared/convert';
 import type { MessageKey } from '@shared/i18n';
-import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useConvertStore, type ConvertUiError } from '../store/convertStore';
@@ -10,6 +9,7 @@ import { ConfirmButton } from './ConfirmButton';
 import { formatClock } from './cutText';
 import { SelectField } from './fields';
 import { LoadingMark } from './LoadingMark';
+import { SmoothProgressBar, useFileDrop } from './mediaToolHelpers';
 
 const STATUS_KEYS: Record<ConvertItemStatus, MessageKey> = {
     waiting: 'convert.status.waiting',
@@ -43,20 +43,6 @@ const ITEM_ERROR_KEYS: Partial<Record<string, MessageKey>> = {
     folder: 'convert.start.error.folder'
 };
 
-interface ConvertBarProps {
-    percent: number;
-    label: string;
-}
-
-function ConvertBar({ percent, label }: ConvertBarProps) {
-    const shown = useSmoothPercent(percent);
-    return (
-        <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={label}>
-            <div className="progress__bar progress__bar--smooth" style={{ width: `${shown}%` }} />
-        </div>
-    );
-}
-
 function ConvertRunRow({ item }: { item: ConvertItemState }) {
     const t = useTranslator();
     const errorKey = item.error === null ? undefined : ITEM_ERROR_KEYS[item.error];
@@ -80,7 +66,7 @@ function ConvertRunRow({ item }: { item: ConvertItemState }) {
                     </button>
                 )}
             </div>
-            {item.status === 'converting' && <ConvertBar percent={item.percent} label={t('convert.progressLabel', { name: item.name })} />}
+            {item.status === 'converting' && <SmoothProgressBar percent={item.percent} label={t('convert.progressLabel', { name: item.name })} />}
             {item.status === 'waiting' && (
                 <div className="progress progress--waiting" role="progressbar" aria-label={t('convert.waitingLabel', { name: item.name })}>
                     <div className="progress__bar" />
@@ -111,11 +97,11 @@ function runSummary(run: ConvertRun, t: ReturnType<typeof useTranslator>): strin
     return failed > 0 ? t('convert.run.failed', { done, failed }) : t('convert.run.done', { count: done });
 }
 
-function carriesFiles(event: { dataTransfer: Pick<DataTransfer, 'types'> | null }): boolean {
-    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+export interface ConvertPanelProps {
+    skipInit?: boolean;
 }
 
-export function ConvertPanel() {
+export function ConvertPanel({ skipInit = false }: ConvertPanelProps) {
     const t = useTranslator();
     const downloadDir = useAppStore((state) => {
         return state.settings.downloadDir;
@@ -148,13 +134,15 @@ export function ConvertPanel() {
         cancel,
         clear
     } = useConvertStore();
-    const [dragging, setDragging] = useState(false);
 
     useEffect(() => {
         syncDefaultFormat(settingsAudioFormat);
     }, [settingsAudioFormat, syncDefaultFormat]);
 
     useEffect(() => {
+        if (skipInit) {
+            return;
+        }
         let unsubscribe: (() => void) | null = null;
         let stopped = false;
         void init().then((stop) => {
@@ -168,58 +156,12 @@ export function ConvertPanel() {
             stopped = true;
             unsubscribe?.();
         };
-    }, [init]);
+    }, [init, skipInit]);
 
     const running = run?.status === 'running';
     const busy = choosing || starting || running;
 
-    useEffect(() => {
-        const keepAway = (event: globalThis.DragEvent): void => {
-            if (carriesFiles(event)) {
-                event.preventDefault();
-            }
-        };
-        window.addEventListener('dragover', keepAway);
-        window.addEventListener('drop', keepAway);
-        return () => {
-            window.removeEventListener('dragover', keepAway);
-            window.removeEventListener('drop', keepAway);
-        };
-    }, []);
-
-    function onDragEnter(event: DragEvent<HTMLElement>): void {
-        if (carriesFiles(event)) {
-            event.preventDefault();
-            setDragging(true);
-        }
-    }
-
-    function onDragOver(event: DragEvent<HTMLElement>): void {
-        if (carriesFiles(event)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = busy ? 'none' : 'copy';
-        }
-    }
-
-    function onDragLeave(event: DragEvent<HTMLElement>): void {
-        if (carriesFiles(event) && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setDragging(false);
-        }
-    }
-
-    function onDrop(event: DragEvent<HTMLElement>): void {
-        if (!carriesFiles(event)) {
-            return;
-        }
-        event.preventDefault();
-        setDragging(false);
-        if (busy) {
-            return;
-        }
-        const files = Array.from(event.dataTransfer.files);
-        if (files.length === 0) {
-            return;
-        }
+    const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop(busy, (files) => {
         const paths = files
             .map((file) => {
                 return window.api.convert.pathForFile(file);
@@ -232,7 +174,7 @@ export function ConvertPanel() {
             return;
         }
         void addPaths(paths);
-    }
+    });
 
     const canStart = !busy && items.length > 0 && (outputMode !== 'custom' || customOutputDir.length > 0);
     const firstFile = run?.items.find((item) => {

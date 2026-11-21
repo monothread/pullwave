@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('the tabs of each section', () => {
     it('are the ones of the bar, in its order, with the gear last', () => {
-        expect(DOWNLOADS_TAB_IDS).toEqual(['queue', 'history', 'explorer', 'cut', 'convert', 'settings']);
+        expect(DOWNLOADS_TAB_IDS).toEqual(['queue', 'explorer', 'history', 'tools', 'settings']);
         expect(ANIME_TAB_IDS).toEqual(['schedule', 'updates', 'search', 'library', 'history', 'settings']);
         expect(MANGA_TAB_IDS).toEqual(['browse', 'search', 'updates', 'library', 'history', 'extensions', 'settings']);
     });
@@ -48,9 +48,9 @@ describe('the tabs of each section', () => {
 
 describe('currentSectionTabs', () => {
     it('gives the tabs of the section the user is in, which one is open, and a way to open another', () => {
-        enter('downloads', { downloads: 'cut' });
+        enter('downloads', { downloads: 'tools' });
         const downloads = currentSectionTabs();
-        expect([downloads?.ids, downloads?.current]).toEqual([DOWNLOADS_TAB_IDS, 'cut']);
+        expect([downloads?.ids, downloads?.current]).toEqual([DOWNLOADS_TAB_IDS, 'tools']);
         downloads?.select('history');
         expect(useAppStore.getState().downloadsView).toBe('history');
         enter('anime', { anime: 'library' });
@@ -101,11 +101,11 @@ describe('Ctrl+Page Down and Ctrl+Page Up in the video downloader', () => {
             expect(press('PageDown')).toBe(false);
             seen.push(useAppStore.getState().downloadsView);
         }
-        expect(seen).toEqual(['queue', 'history', 'explorer', 'cut', 'convert', 'settings', 'queue']);
+        expect(seen).toEqual(['queue', 'explorer', 'history', 'tools', 'settings', 'queue']);
         expect(press('PageUp')).toBe(false);
         expect(useAppStore.getState().downloadsView).toBe('settings');
         press('PageUp');
-        expect(useAppStore.getState().downloadsView).toBe('convert');
+        expect(useAppStore.getState().downloadsView).toBe('tools');
     });
 });
 
@@ -192,7 +192,7 @@ describe('Ctrl+Page Down and Ctrl+Page Up where there are no tabs, or the keys b
         expect(useAppStore.getState().downloadsView).toBe('queue');
         player.remove();
         expect(press('PageDown')).toBe(false);
-        expect(useAppStore.getState().downloadsView).toBe('history');
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
     });
 
     it('work with the cursor in a field', () => {
@@ -201,7 +201,7 @@ describe('Ctrl+Page Down and Ctrl+Page Up where there are no tabs, or the keys b
         const field = getByLabelText('Field');
         field.focus();
         expect(press('PageDown', {}, field)).toBe(false);
-        expect(useAppStore.getState().downloadsView).toBe('history');
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
     });
 
     it('stop when the app goes away', () => {
