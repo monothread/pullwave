@@ -23,7 +23,7 @@
 
 Pullwave brings three workspaces together in a single desktop app:
 
-- **Video downloader:** download videos, audio, playlists, and live streams from any site supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), with a persistent queue, history, and frame-exact media cutter.
+- **Video downloader:** download videos, audio, playlists, and live streams from any site supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), with a persistent queue, history, local media explorer, frame-exact media cutter, and batch video-to-audio converter.
 - **Anime:** airing schedule, search, local library with series/seasons, automatic update checks, a built-in player, and optional AI subtitle translation and generation — powered by [ani-cli](https://github.com/pystardust/ani-cli) on Linux and Windows 10 (1903)+.
 - **Manga:** browse, search, organize, download (CBZ or images), and read manga from [Mihon/Tachiyomi](https://mihon.app) extensions via [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) on 64-bit Linux and Windows.
 
@@ -43,7 +43,8 @@ Pullwave brings three workspaces together in a single desktop app:
 
 - **Flexible video & audio downloads:** pick maximum resolution, container (`mp4`, `mkv`, `webm`), audio-only (`mp3`, `m4a`, `opus`), playlists, subtitles, and browser cookies for authenticated videos.
 - **Live-stream recording:** record from the start, wait for scheduled streams, and keep partial recordings safely if the stream drops.
-- **Built-in media cutter:** extract multiple frame-accurate clips (or audio-only clips) from any local video or audio file, with inline preview before exporting.
+- **Built-in media explorer:** browse local folders filtered strictly to directories, videos, and audio files, with cached FFmpeg video thumbnails, a built-in video/audio player, quick links to Convert/Cut, and right-click actions (new folder, rename, show in folder, move to trash with confirmation).
+- **Built-in media cutter & audio converter:** extract multiple frame-accurate clips (or audio-only clips) from any local video or audio file with inline preview, or batch-convert videos into `mp3`, `m4a`, `opus`, `flac`, or `wav`.
 - **Anime library & player:** group seasons into series, track watched status and resume positions, stream without downloading, and watch with fansub-styled subtitles in every available language.
 - **AI subtitle tools (BYOK):** translate existing subtitles or generate subtitles directly from episode audio using your own OpenAI, Claude, Gemini, DeepSeek, GLM, Kimi, or custom OpenAI-compatible API key.
 - **Full manga workflow:** install Mihon/Tachiyomi extension repositories, search across all installed sources at once, organize with custom groups, download as CBZ with `ComicInfo.xml`, and read in single-page, double-page, vertical scroll, or webtoon modes with auto-scroll.
@@ -99,7 +100,7 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 
 | Section | Tabs |
 |---|---|
-| **VIDEO DOWNLOADER** | `QUEUE` · `HISTORY` · `CUT` · `⚙` |
+| **VIDEO DOWNLOADER** | `QUEUE` · `HISTORY` · `EXPLORER` · `CUT` · `CONVERT` · `⚙` |
 | **ANIME** | `SCHEDULE` · `UPDATES` · `SEARCH` · `LIBRARY` · `HISTORY` · `DOWNLOADS` · `⚙` |
 | **MANGA** | `BROWSE` · `SEARCH` · `UPDATES` · `LIBRARY` · `HISTORY` · `EXTENSIONS` · `DOWNLOADS` · `⚙` |
 
@@ -125,6 +126,13 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 
 Lists every finished and failed download with timestamp and a quick action to reveal the file in your file manager.
 
+### Explorer
+Browse local folders directly inside Pullwave, starting at your configured downloads directory:
+- Shows **only folders, videos, and audio files** — non-media files are filtered out automatically, with search and type filters (**ALL**, **VIDEOS**, **AUDIO**) plus breadcrumb navigation, **UP**, **HOME**, **REFRESH**, and a single **OPEN FOLDER** button next to the item count summary.
+- Video cards load on-demand FFmpeg thumbnails backed by a persistent disk cache.
+- Click any folder card to enter it, or click any video/audio card to play it inside the built-in media player (with Previous/Next navigation, `VideoControls`, keyboard shortcuts, `Escape`/mouse-back close, and automatic FFmpeg fallback transcoding when a codec is unsupported).
+- Media cards include quick **TO AUDIO** and **CUT** actions; right-clicking a card or the background opens a context menu next to the cursor with **New folder**, **Rename** (preserving file extensions), **Show in folder**, **Convert to audio**, **Cut**, and **Move to trash** (with a confirmation dialog).
+
 ### Cut
 ![Cut tab with two marked segments](docs/screenshots/neon-tokyo-cut.png)
 
@@ -132,6 +140,12 @@ Trim any local video or audio file into one or more clips without leaving the ap
 - Click **CHOOSE FILE** or drag and drop a file onto the panel to see its thumbnail/cover, media type (**VIDEO** / **AUDIO**), and duration.
 - Add as many start/end ranges as you need (`m:ss`, `h:mm:ss`, or seconds with decimals such as `1:34.5`). Overlapping ranges are supported, invalid ranges are flagged inline, and **▶** previews only that segment inside the built-in player.
 - Cuts are **frame-exact** (re-encoded in the original format, or extracted as audio-only using your preferred audio format) and saved to `<name> - cuts/` inside your downloads folder without overwriting existing files. `ffmpeg` runs at low priority with limited CPU threads so the UI stays responsive, and **CANCEL** stops immediately while keeping finished clips.
+
+### Convert
+Batch-convert one or more local videos into audio files using the bundled `ffmpeg`:
+- Add files via **CHOOSE VIDEOS**, drag and drop, or directly from the **Explorer** tab.
+- Pick the output format (**MP3**, **M4A**, **OPUS**, **FLAC**, or **WAV**) and destination (**Downloads folder**, **Same folder as the video**, or a **Custom folder**).
+- Tracks per-file progress sequentially at low CPU priority, skips videos without an audio track cleanly, avoids overwriting existing files, and lets you **CANCEL** mid-batch while keeping completed audio files.
 
 ### Quality, cookies, live streams & settings
 ![Video downloader settings](docs/screenshots/neon-tokyo-settings.png)
