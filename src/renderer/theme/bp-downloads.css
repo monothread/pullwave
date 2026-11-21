@@ -272,3 +272,451 @@
     border: 1px solid var(--line);
     background: black;
 }
+
+.convert__items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.convert__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius-small);
+    background: color-mix(in srgb, var(--panel) 78%, transparent);
+}
+
+.convert__item-name {
+    flex: 1 1 200px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.convert__options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px 16px;
+}
+
+.convert__options .field {
+    flex: 0 1 220px;
+    min-width: 150px;
+}
+
+.convert__folder-btn {
+    margin-bottom: 2px;
+}
+
+.explorer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.explorer__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+}
+
+.explorer__roots {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.explorer__nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+}
+
+.explorer__nav-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.explorer__breadcrumbs {
+    display: flex;
+    flex: 1 1 260px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius-small);
+    background: color-mix(in srgb, var(--panel) 75%, transparent);
+}
+
+.explorer__crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.explorer__crumb-sep {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.explorer__crumb-btn {
+    padding: 2px 6px;
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.explorer__crumb-btn:hover {
+    color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, transparent);
+}
+
+.explorer__crumb-btn--current {
+    color: var(--cyan);
+    font-weight: 700;
+}
+
+.explorer__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px 14px;
+}
+
+.explorer__filters,
+.explorer__view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.explorer__search {
+    flex: 1 1 200px;
+    min-width: 160px;
+}
+
+.explorer__sort {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.explorer__sort .field {
+    min-width: 130px;
+}
+
+.explorer__dir-btn {
+    margin-bottom: 2px;
+}
+
+.explorer__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.explorer__summary .history__meta {
+    margin: 0;
+}
+
+.explorer__entries {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.explorer__entries--grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+    gap: 14px;
+}
+
+.explorer__entries--list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.explorer__item {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius-small);
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    box-shadow: var(--bp-shadow);
+    transition: border-color 0.2s ease;
+}
+
+.explorer__item:hover {
+    border-color: color-mix(in srgb, var(--cyan) 55%, var(--line));
+}
+
+.explorer__open {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+}
+
+.explorer__hidden-toggle {
+    cursor: pointer;
+}
+
+.explorer__visual {
+    display: block;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius-small);
+    background: color-mix(in srgb, var(--panel) 70%, black);
+}
+
+.explorer__thumb {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+}
+
+.explorer__thumb-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.explorer__thumb--empty,
+.explorer__thumb--audio,
+.explorer__thumb--folder {
+    font-size: 36px;
+    color: var(--cyan);
+    text-shadow: var(--text-glow);
+}
+
+.explorer__thumb--audio {
+    color: var(--magenta);
+}
+
+.explorer__thumb--loading {
+    background:
+        linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cyan) 22%, transparent) 50%, transparent 70%) 0 0 / 200% 100%,
+        color-mix(in srgb, var(--panel) 80%, black);
+    animation: bp-thumb-shine 1.2s linear infinite;
+}
+
+.explorer__kind-badge {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+}
+
+.explorer__info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.explorer__name {
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.explorer__item-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.explorer__entries--list .explorer__item {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.explorer__entries--list .explorer__open {
+    flex: 1 1 280px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.explorer__entries--list .explorer__visual {
+    flex: none;
+    width: 96px;
+}
+
+.explorer__entries--list .explorer__thumb--empty,
+.explorer__entries--list .explorer__thumb--audio,
+.explorer__entries--list .explorer__thumb--folder {
+    font-size: 22px;
+}
+
+.explorer-dialog__form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.explorer-dialog__input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.explorer-dialog__input-row .input {
+    flex: 1 1 auto;
+}
+
+.explorer-menu {
+    position: fixed;
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    min-width: 190px;
+    padding: 6px;
+    gap: 2px;
+    border: 1px solid color-mix(in srgb, var(--cyan) 50%, var(--line));
+    border-radius: var(--bp-radius-small);
+    background: var(--panel);
+    box-shadow: var(--bp-shadow);
+}
+
+.explorer-menu__item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.explorer-menu__item:hover,
+.explorer-menu__item:focus-visible {
+    outline: none;
+    background: color-mix(in srgb, var(--cyan) 16%, transparent);
+    color: var(--cyan);
+}
+
+.explorer-menu__item--danger {
+    color: var(--red);
+}
+
+.explorer-menu__item--danger:hover,
+.explorer-menu__item--danger:focus-visible {
+    background: color-mix(in srgb, var(--red) 16%, transparent);
+    color: var(--red);
+}
+
+.explorer-player__wait {
+    display: grid;
+    flex: 1;
+    min-height: 240px;
+    place-items: center;
+    border: 1px solid var(--line);
+    background: var(--panel);
+}
+
+.explorer-player__error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+}
+
+.explorer-player__stage--audio {
+    min-height: 280px;
+    background:
+        radial-gradient(60% 80% at 50% 40%, color-mix(in srgb, var(--magenta) 18%, transparent) 0%, transparent 70%),
+        var(--panel);
+}
+
+.explorer-player__audio-art {
+    flex: 1 1 auto;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    pointer-events: none;
+    text-align: center;
+}
+
+.explorer-player__audio-icon {
+    font-size: 64px;
+    color: var(--magenta);
+    text-shadow: var(--text-glow);
+}
+
+.explorer-player__audio-name {
+    font-size: 18px;
+    font-weight: 700;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.explorer-player__audio-meta {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.explorer-player__audio-video {
+    flex: 0 0 0;
+    height: 0;
+    min-height: 0;
+    background: transparent;
+}

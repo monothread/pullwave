@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('the tabs of each section', () => {
     it('are the ones of the bar, in its order, with the gear last', () => {
-        expect(DOWNLOADS_TAB_IDS).toEqual(['queue', 'history', 'cut', 'settings']);
+        expect(DOWNLOADS_TAB_IDS).toEqual(['queue', 'history', 'explorer', 'cut', 'convert', 'settings']);
         expect(ANIME_TAB_IDS).toEqual(['schedule', 'updates', 'search', 'library', 'history', 'settings']);
         expect(MANGA_TAB_IDS).toEqual(['browse', 'search', 'updates', 'library', 'history', 'extensions', 'settings']);
     });
@@ -97,15 +97,15 @@ describe('Ctrl+Page Down and Ctrl+Page Up in the video downloader', () => {
         enter('downloads');
         render(<Screen />);
         const seen = ['queue'];
-        for (let step = 0; step < 4; step += 1) {
+        for (let step = 0; step < DOWNLOADS_TAB_IDS.length; step += 1) {
             expect(press('PageDown')).toBe(false);
             seen.push(useAppStore.getState().downloadsView);
         }
-        expect(seen).toEqual(['queue', 'history', 'cut', 'settings', 'queue']);
+        expect(seen).toEqual(['queue', 'history', 'explorer', 'cut', 'convert', 'settings', 'queue']);
         expect(press('PageUp')).toBe(false);
         expect(useAppStore.getState().downloadsView).toBe('settings');
         press('PageUp');
-        expect(useAppStore.getState().downloadsView).toBe('cut');
+        expect(useAppStore.getState().downloadsView).toBe('convert');
     });
 });
 

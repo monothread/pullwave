@@ -1,6 +1,16 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslatableResponse, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { ConvertChooseResponse, ConvertProbeResponse, ConvertRun, ConvertStartResponse } from '@shared/convert';
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
+import type {
+    ExplorerCreateFolderResponse,
+    ExplorerListResponse,
+    ExplorerOpenExternalResponse,
+    ExplorerOpenFolderResponse,
+    ExplorerPreviewResponse,
+    ExplorerRenameResponse,
+    ExplorerTrashResponse
+} from '@shared/explorer';
 import type { LlmStatus } from '@shared/llm';
 import type { LogLine, LogSource } from '@shared/logs';
 import type { LibraryManga, MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
@@ -11,6 +21,8 @@ import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
 export type MockProgramsApi = { [K in keyof CyberApi['programs']]: ReturnType<typeof vi.fn> };
 export type MockCutApi = { [K in keyof CyberApi['cut']]: ReturnType<typeof vi.fn> };
+export type MockConvertApi = { [K in keyof CyberApi['convert']]: ReturnType<typeof vi.fn> };
+export type MockExplorerApi = { [K in keyof CyberApi['explorer']]: ReturnType<typeof vi.fn> };
 export type MockLogsApi = { [K in keyof CyberApi['logs']]: ReturnType<typeof vi.fn> };
 
 export function makeProgramInfo(id: ProgramId, overrides: Partial<ProgramInfo> = {}): ProgramInfo {
@@ -36,8 +48,16 @@ export function makeProgramVersions(overrides: Partial<ProgramVersions> = {}): P
 }
 
 export interface MockApiHandle {
-    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut' | 'logs'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi; cut: MockCutApi; logs: MockLogsApi };
+    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut' | 'convert' | 'explorer' | 'logs'>]: ReturnType<typeof vi.fn> } & {
+        manga: MockMangaApi;
+        programs: MockProgramsApi;
+        cut: MockCutApi;
+        convert: MockConvertApi;
+        explorer: MockExplorerApi;
+        logs: MockLogsApi;
+    };
     emitCutProgress: (run: CutRun) => void;
+    emitConvertProgress: (run: ConvertRun) => void;
     emitLogLines: (source: LogSource, lines: LogLine[]) => void;
     emitProgramTool: (state: ToolState) => void;
     emitProgramUpdate: (state: ToolState) => void;
@@ -91,6 +111,7 @@ export function createMockApi(): MockApiHandle {
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const programToolListeners: Array<(state: ToolState) => void> = [];
     const cutListeners: Array<(run: CutRun) => void> = [];
+    const convertListeners: Array<(run: ConvertRun) => void> = [];
     const logListeners: Array<{ source: LogSource; listener: (lines: LogLine[]) => void }> = [];
     const programUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaToolListeners: Array<(state: ToolState) => void> = [];
@@ -141,6 +162,75 @@ export function createMockApi(): MockApiHandle {
             return { ok: false, reason: 'failed' };
         }),
         clear: vi.fn(async () => {
+            return undefined;
+        })
+    };
+
+    const convert: MockConvertApi = {
+        choose: vi.fn(async (): Promise<ConvertChooseResponse> => {
+            return { ok: false, reason: 'cancelled' };
+        }),
+        probe: vi.fn(async (): Promise<ConvertProbeResponse> => {
+            return { ok: false, reason: 'unreadable' };
+        }),
+        pathForFile: vi.fn((file: File): string => {
+            return `/dropped/${file.name}`;
+        }),
+        start: vi.fn(async (): Promise<ConvertStartResponse> => {
+            return { ok: false, reason: 'invalid' };
+        }),
+        cancel: vi.fn(async () => {
+            return undefined;
+        }),
+        current: vi.fn(async (): Promise<ConvertRun | null> => {
+            return null;
+        }),
+        onProgress: vi.fn((listener: (run: ConvertRun) => void) => {
+            return subscribe(convertListeners, listener);
+        }),
+        clear: vi.fn(async () => {
+            return undefined;
+        })
+    };
+
+    const explorer: MockExplorerApi = {
+        list: vi.fn(async (directory?: string): Promise<ExplorerListResponse> => {
+            const target = directory ?? '/downloads';
+            return {
+                ok: true,
+                listing: {
+                    directory: target,
+                    parent: target === '/' ? null : '/',
+                    breadcrumbs: [{ name: '/', path: '/' }, { name: 'downloads', path: target }],
+                    entries: [],
+                    roots: [{ id: 'downloads', label: 'downloads', path: '/downloads', kind: 'downloads' }]
+                }
+            };
+        }),
+        chooseFolder: vi.fn(async (): Promise<string | null> => {
+            return null;
+        }),
+        openFolder: vi.fn(async (): Promise<ExplorerOpenFolderResponse> => {
+            return { ok: true };
+        }),
+        createFolder: vi.fn(async (parentDir: string, name: string): Promise<ExplorerCreateFolderResponse> => {
+            return { ok: true, path: `${parentDir}/${name}` };
+        }),
+        rename: vi.fn(async (path: string, newName: string): Promise<ExplorerRenameResponse> => {
+            const slash = path.lastIndexOf('/');
+            const dir = slash >= 0 ? path.slice(0, slash) : '';
+            return { ok: true, path: `${dir}/${newName}`, name: newName };
+        }),
+        trash: vi.fn(async (): Promise<ExplorerTrashResponse> => {
+            return { ok: true };
+        }),
+        openExternal: vi.fn(async (): Promise<ExplorerOpenExternalResponse> => {
+            return { ok: true };
+        }),
+        preview: vi.fn(async (): Promise<ExplorerPreviewResponse> => {
+            return { ok: false, reason: 'failed' };
+        }),
+        cancelPreview: vi.fn(async () => {
             return undefined;
         })
     };
@@ -382,6 +472,8 @@ export function createMockApi(): MockApiHandle {
         manga,
         programs,
         cut,
+        convert,
+        explorer,
         logs,
         getSettings: vi.fn(async () => {
             return DEFAULT_SETTINGS;
@@ -696,6 +788,11 @@ export function createMockApi(): MockApiHandle {
         unsubscribers,
         emitCutProgress: (run) => {
             cutListeners.forEach((listener) => {
+                listener(run);
+            });
+        },
+        emitConvertProgress: (run) => {
+            convertListeners.forEach((listener) => {
                 listener(run);
             });
         },

@@ -67,19 +67,35 @@ describe('DownloadsPanel', () => {
             expect(screen.queryByRole('button', { name: 'CHOOSE FILE' })).not.toBeInTheDocument();
         });
 
-        it('does not hold the history or the settings back', async () => {
+        it('shows the converter once the programs are ready, and how they are downloaded in its place when one failed', async () => {
+            const user = userEvent.setup();
+            const { unmount } = render(<DownloadsPanel />);
+            await user.click(within(subNav()).getByRole('button', { name: 'CONVERT' }));
+            expect(screen.getByRole('button', { name: 'CHOOSE VIDEOS' })).toBeInTheDocument();
+            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            unmount();
+            failProgram('ffmpeg');
+            render(<DownloadsPanel />);
+            expect(screen.getByTestId('programs-setup-downloads')).toHaveTextContent('PREPARING THE VIDEO DOWNLOADER');
+            expect(screen.queryByRole('button', { name: 'CHOOSE VIDEOS' })).not.toBeInTheDocument();
+        });
+
+        it('does not hold the history, the explorer or the settings back', async () => {
             failProgram('ffmpeg');
             const user = userEvent.setup();
             render(<DownloadsPanel />);
             await user.click(within(subNav()).getByRole('button', { name: 'HISTORY' }));
             expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            await user.click(within(subNav()).getByRole('button', { name: 'EXPLORER' }));
+            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            expect(screen.getByRole('region', { name: 'Media explorer' })).toBeInTheDocument();
             await user.click(within(subNav()).getByRole('button', { name: 'SETTINGS' }));
             expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
             expect(screen.getByTestId('programs-block-downloads')).toBeInTheDocument();
         });
     });
 
-    it('is a region of the video downloader with a QUEUE, a HISTORY, a CUT and a SETTINGS screen', () => {
+    it('is a region of the video downloader with QUEUE, HISTORY, EXPLORER, CUT, CONVERT and SETTINGS screens', () => {
         render(<DownloadsPanel />);
         expect(screen.getByRole('region', { name: 'Video downloader' })).toBeInTheDocument();
         expect(
@@ -88,7 +104,7 @@ describe('DownloadsPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['QUEUE', 'HISTORY', 'CUT', 'SETTINGS']);
+        ).toEqual(['QUEUE', 'HISTORY', 'EXPLORER', 'CUT', 'CONVERT', 'SETTINGS']);
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');
         expect(settings).toHaveTextContent(SETTINGS_ICON);

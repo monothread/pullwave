@@ -13,6 +13,12 @@ const CONTENT_TYPES: Record<string, string> = {
     '.mkv': 'video/x-matroska',
     '.mov': 'video/quicktime',
     '.avi': 'video/x-msvideo',
+    '.flv': 'video/x-flv',
+    '.ts': 'video/mp2t',
+    '.wmv': 'video/x-ms-wmv',
+    '.mpeg': 'video/mpeg',
+    '.mpg': 'video/mpeg',
+    '.3gp': 'video/3gpp',
     '.vtt': 'text/vtt; charset=utf-8',
     '.mp3': 'audio/mpeg',
     '.m4a': 'audio/mp4',
@@ -22,6 +28,7 @@ const CONTENT_TYPES: Record<string, string> = {
     '.opus': 'audio/ogg',
     '.wav': 'audio/wav',
     '.flac': 'audio/flac',
+    '.wma': 'audio/x-ms-wma',
     '.jpg': 'image/jpeg'
 };
 

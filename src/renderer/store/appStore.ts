@@ -19,7 +19,7 @@ import type {
 } from '@shared/types';
 
 export type Tab = 'home' | 'downloads' | 'anime' | 'manga' | 'settings';
-export type DownloadsView = 'queue' | 'cut' | 'history' | 'settings';
+export type DownloadsView = 'queue' | 'history' | 'explorer' | 'cut' | 'convert' | 'settings';
 export type NoticeKind = 'error' | 'info';
 
 export interface Notice {

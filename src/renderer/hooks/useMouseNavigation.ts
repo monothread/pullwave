@@ -4,6 +4,7 @@ import { useAnimeStore, type AnimeBrowseView, type AnimeSelection, type AnimeVie
 import { useAppStore, type DownloadsView, type Tab } from '../store/appStore';
 import { useMangaStore, type MangaBrowseView, type MangaSelection, type MangaView } from '../store/mangaStore';
 import { useCutStore } from '../store/cutStore';
+import { useExplorerStore } from '../store/explorerStore';
 import { isBatchingNavigation, onNavigationBatchEnd } from '../navigation/navigationBatch';
 import { MAX_NAVIGATION_ENTRIES, NavigationHistory } from './navigationHistory';
 import { isScrollRestoring, restoreScroll } from './scrollRestoration';
@@ -112,12 +113,23 @@ function closePlayers(): boolean {
         closePreview();
         return true;
     }
+    const { playing: explorerPlaying, closePlayer: closeExplorerPlayer } = useExplorerStore.getState();
+    if (explorerPlaying !== null) {
+        closeExplorerPlayer();
+        return true;
+    }
     return false;
 }
 
 function isPlayerOpen(): boolean {
     const { playing, streaming } = useAnimeStore.getState();
-    return playing !== null || streaming !== null || useMangaStore.getState().reader.status !== 'closed' || useCutStore.getState().preview !== null;
+    return (
+        playing !== null ||
+        streaming !== null ||
+        useMangaStore.getState().reader.status !== 'closed' ||
+        useCutStore.getState().preview !== null ||
+        useExplorerStore.getState().playing !== null
+    );
 }
 
 function scrollArea(): HTMLElement | null {

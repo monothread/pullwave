@@ -5,6 +5,8 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, safeStorage
 import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
 import { CUT_MEDIA_SCHEME } from '@shared/cut';
+import { EXPLORER_MEDIA_SCHEME } from '@shared/explorer';
+import { VIDEO_DIALOG_EXTENSIONS } from '@shared/mediaExtensions';
 import { IPC, VIDEO_THUMBNAIL_SCHEME } from '@shared/constants';
 import { DEFAULT_THEME_CHOICE } from '@shared/themeChoice';
 import type { ThemeChoice } from '@shared/types';
@@ -12,9 +14,14 @@ import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
 import { registerCutHandlers } from './ipc/registerCutHandlers';
+import { registerConvertHandlers } from './ipc/registerConvertHandlers';
+import { registerExplorerHandlers } from './ipc/registerExplorerHandlers';
 import { registerProgramHandlers } from './ipc/registerProgramHandlers';
+import { ConvertService } from './services/convertService';
 import { CutPreview, createCutMediaHandler } from './services/cutPreview';
 import { CutService, createFfmpegRunner } from './services/cutService';
+import { ExplorerService, createExplorerMediaHandler } from './services/explorerService';
+import { ExplorerThumbnails } from './services/explorerThumbnails';
 import { removeLegacyBinaries } from './services/tools/legacyBinaries';
 import { ProgramTools } from './services/tools/programTools';
 import { createMangaRuntime } from './mangaRuntime';
@@ -60,11 +67,12 @@ import { watchMinimized } from './services/windowMinimized';
 const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
 const PRODUCTION_CSP =
-    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co https://media.kitsu.app http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}: ${VIDEO_THUMBNAIL_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co https://media.kitsu.app http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}: ${EXPLORER_MEDIA_SCHEME}: ${VIDEO_THUMBNAIL_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}: ${EXPLORER_MEDIA_SCHEME}:`;
 
 protocol.registerSchemesAsPrivileged([
     { scheme: MANGA_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: CUT_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
+    { scheme: EXPLORER_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     { scheme: VIDEO_THUMBNAIL_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     ...(isAnimeSupported(process.platform)
         ? [
@@ -582,10 +590,12 @@ function bootstrap(): BootstrapResult {
         }
         const endAll = (): Promise<unknown> => {
             cutter.cancel();
+            explorerThumbnails.cancelPending();
+            explorerThumbnails.cancelPreview();
             anime?.stopBackgroundChecks();
-            return Promise.all([queue.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
+            return Promise.all([queue.shutdown(), converter.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
         };
-        if (queue.hasRunsToEnd() || anime?.queue.hasRunsToEnd() || manga?.queue.hasRunsToEnd() || manga?.hasProcessesToEnd()) {
+        if (queue.hasRunsToEnd() || converter.hasActiveRun() || anime?.queue.hasRunsToEnd() || manga?.queue.hasRunsToEnd() || manga?.hasProcessesToEnd()) {
             event.preventDefault();
             shuttingDown = true;
             void endAll().finally(() => {
@@ -640,8 +650,92 @@ function bootstrap(): BootstrapResult {
     protocol.handle(CUT_MEDIA_SCHEME, (request) => {
         return handleCutMedia(request);
     });
+    const tryAppPath = (name: 'downloads' | 'home' | 'videos' | 'music'): string => {
+        try {
+            return app.getPath(name);
+        } catch {
+            return '';
+        }
+    };
+    const converter = new ConvertService({
+        runFfmpeg: () => {
+            return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
+        },
+        chooseFiles: async () => {
+            if (process.env.PULLWAVE_CONVERT_FILES) {
+                return process.env.PULLWAVE_CONVERT_FILES.split(delimiter).filter((entry) => {
+                    return entry.length > 0;
+                });
+            }
+            const options = {
+                properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+                filters: [
+                    { name: 'Videos', extensions: VIDEO_DIALOG_EXTENSIONS },
+                    { name: 'All files', extensions: ['*'] }
+                ]
+            };
+            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+            return result.canceled ? null : result.filePaths;
+        },
+        downloadsDir: () => {
+            return settingsStore.get().downloadDir || tryAppPath('downloads') || homedir();
+        },
+        send: (run) => {
+            sendToRenderer(IPC.eventConvertProgress, run);
+        }
+    });
+    const explorerThumbnails = new ExplorerThumbnails({
+        runFfmpeg: () => {
+            return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
+        },
+        cacheDirectory: join(dataDir, 'explorer-thumbs'),
+        previewDirectory: join(dataDir, 'explorer-preview')
+    });
+    const explorer = new ExplorerService({
+        defaultDirectory: () => {
+            const configured = settingsStore.get().downloadDir;
+            if (configured.length > 0 && existsSync(configured)) {
+                return configured;
+            }
+            const downloads = tryAppPath('downloads');
+            if (downloads.length > 0 && existsSync(downloads)) {
+                return downloads;
+            }
+            return tryAppPath('home') || homedir();
+        },
+        roots: () => {
+            const configured = settingsStore.get().downloadDir;
+            const downloads = configured.length > 0 ? configured : tryAppPath('downloads');
+            return [
+                { id: 'downloads', label: 'downloads', path: downloads, kind: 'downloads' },
+                { id: 'home', label: 'home', path: tryAppPath('home') || homedir(), kind: 'home' },
+                { id: 'videos', label: 'videos', path: tryAppPath('videos'), kind: 'videos' },
+                { id: 'music', label: 'music', path: tryAppPath('music'), kind: 'music' }
+            ];
+        },
+        chooseFolder: async (startAt) => {
+            if (process.env.PULLWAVE_EXPLORER_FOLDER) {
+                return process.env.PULLWAVE_EXPLORER_FOLDER;
+            }
+            const options = { defaultPath: startAt, properties: ['openDirectory'] as Array<'openDirectory'> };
+            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+            return result.canceled ? null : (result.filePaths[0] ?? null);
+        },
+        trashItem: (path) => {
+            return shell.trashItem(path);
+        },
+        openExternal: (path) => {
+            return shell.openPath(path);
+        },
+        thumbnails: explorerThumbnails
+    });
+    const handleExplorerMedia = createExplorerMediaHandler(explorer, explorerThumbnails, defaultMediaFileSystem);
+    protocol.handle(EXPLORER_MEDIA_SCHEME, (request) => {
+        return handleExplorerMedia(request);
+    });
     app.on('will-quit', () => {
         cutPreview.dispose();
+        explorerThumbnails.dispose();
         [manga?.db, anime?.db].forEach((db) => {
             try {
                 db?.checkpoint();
@@ -651,6 +745,8 @@ function bootstrap(): BootstrapResult {
         });
     });
     registerCutHandlers(ipcMain, cutter, cutPreview);
+    registerConvertHandlers(ipcMain, converter);
+    registerExplorerHandlers(ipcMain, explorer);
     logWatchers = registerLogHandlers(ipcMain, { hub: processLogs, send: sendToRenderer });
     if (process.env.PULLWAVE_NO_TOOLS !== '1') {
         void programs.prepare();

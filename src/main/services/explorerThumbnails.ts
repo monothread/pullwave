@@ -1,0 +1,324 @@
+import { createHash } from 'node:crypto';
+import { mkdirSync, rmSync } from 'node:fs';
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { EXPLORER_MEDIA_SCHEME, type ExplorerEntry, type ExplorerMediaRoute, type ExplorerPreviewResponse } from '@shared/explorer';
+import { createConcurrencyLimit, type ConcurrencyLimit } from './concurrencyLimit';
+import type { RunFfmpeg } from './cutService';
+
+export const EXPLORER_THUMB_WIDTH = 320;
+export const EXPLORER_THUMB_SEEK_SECONDS = 2;
+export const DEFAULT_MAX_CACHE_FILES = 400;
+const DEFAULT_THUMB_CONCURRENCY = 2;
+
+export interface ExplorerThumbnailsDependencies {
+    runFfmpeg: () => RunFfmpeg | null;
+    cacheDirectory: string;
+    previewDirectory: string;
+    concurrency?: number;
+    maxCacheFiles?: number;
+}
+
+export function explorerMediaUrl(route: ExplorerMediaRoute, id: number): string {
+    return `${EXPLORER_MEDIA_SCHEME}://${route}/${String(id)}`;
+}
+
+export function thumbnailCacheKey(path: string, modifiedAt: number, sizeBytes: number): string {
+    return createHash('sha256').update(`${path}\0${String(modifiedAt)}\0${String(sizeBytes)}`).digest('hex');
+}
+
+export function buildExplorerThumbArgs(input: string, output: string, seekSeconds: number): string[] {
+    const seek = seekSeconds > 0 ? ['-ss', String(seekSeconds)] : [];
+    return [
+        '-hide_banner',
+        '-nostdin',
+        '-y',
+        '-v',
+        'error',
+        ...seek,
+        '-i',
+        input,
+        '-map',
+        '0:v:0',
+        '-frames:v',
+        '1',
+        '-vf',
+        `scale=${String(EXPLORER_THUMB_WIDTH)}:-2`,
+        '-q:v',
+        '5',
+        output
+    ];
+}
+
+export function buildExplorerPreviewArgs(entry: Pick<ExplorerEntry, 'path' | 'kind'>, output: string): string[] {
+    const codecs =
+        entry.kind === 'video'
+            ? ['-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
+            : ['-vn', '-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k'];
+    return ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', entry.path, ...codecs, output];
+}
+
+async function fileHasBytes(path: string): Promise<boolean> {
+    try {
+        const info = await stat(path);
+        return info.isFile() && info.size > 0;
+    } catch {
+        return false;
+    }
+}
+
+interface ActivePreview {
+    id: number;
+    key: string;
+    path: string;
+}
+
+export class ExplorerThumbnails {
+    private readonly limit: ConcurrencyLimit;
+    private readonly inFlight = new Map<string, Promise<string | null>>();
+    private activePreview: ActivePreview | null = null;
+    private generation = 0;
+    private thumbController = new AbortController();
+    private previewController: AbortController | null = null;
+    private nextId = 1;
+    private tempCounter = 1;
+    private pruning = false;
+    private pruneQueued = false;
+
+    constructor(private readonly deps: ExplorerThumbnailsDependencies) {
+        this.limit = createConcurrencyLimit(deps.concurrency ?? DEFAULT_THUMB_CONCURRENCY);
+        this.removePreviewDir();
+        void this.cleanStaleTempThumbs();
+    }
+
+    cancelPending(): void {
+        this.generation += 1;
+        this.thumbController.abort();
+        this.thumbController = new AbortController();
+        this.inFlight.clear();
+    }
+
+    cancelPreview(): void {
+        this.previewController?.abort();
+        this.previewController = null;
+    }
+
+    resolvePreview(id: number): string | null {
+        return this.activePreview !== null && this.activePreview.id === id ? this.activePreview.path : null;
+    }
+
+    async thumbnail(entry: Pick<ExplorerEntry, 'path' | 'kind' | 'modifiedAt' | 'sizeBytes'>): Promise<string | null> {
+        if (entry.kind !== 'video') {
+            return null;
+        }
+        const generation = this.generation;
+        const signal = this.thumbController.signal;
+        const key = thumbnailCacheKey(entry.path, entry.modifiedAt, entry.sizeBytes);
+        const target = join(this.deps.cacheDirectory, `${key}.jpg`);
+        if (await fileHasBytes(target)) {
+            return target;
+        }
+        if (signal.aborted || generation !== this.generation) {
+            return null;
+        }
+        const existing = this.inFlight.get(key);
+        if (existing !== undefined) {
+            return existing;
+        }
+        const job = this.generateThumbnail(entry.path, target, generation, signal).finally(() => {
+            if (this.inFlight.get(key) === job) {
+                this.inFlight.delete(key);
+            }
+        });
+        this.inFlight.set(key, job);
+        return job;
+    }
+
+    async preview(entry: Pick<ExplorerEntry, 'path' | 'kind' | 'modifiedAt' | 'sizeBytes'>): Promise<ExplorerPreviewResponse> {
+        const key = thumbnailCacheKey(entry.path, entry.modifiedAt, entry.sizeBytes);
+        if (this.activePreview !== null && this.activePreview.key === key && (await fileHasBytes(this.activePreview.path))) {
+            return { ok: true, url: explorerMediaUrl('preview', this.activePreview.id), converted: true };
+        }
+        const runFfmpeg = this.deps.runFfmpeg();
+        if (runFfmpeg === null) {
+            return { ok: false, reason: 'no-ffmpeg' };
+        }
+        this.previewController?.abort();
+        const controller = new AbortController();
+        this.previewController = controller;
+        const id = this.takeId();
+        const extension = entry.kind === 'video' ? '.mp4' : '.m4a';
+        const output = join(this.deps.previewDirectory, `preview-${String(id)}${extension}`);
+        try {
+            mkdirSync(this.deps.previewDirectory, { recursive: true });
+        } catch {
+            if (this.previewController === controller) {
+                this.previewController = null;
+            }
+            return { ok: false, reason: 'failed' };
+        }
+        const outcome = await runFfmpeg({ args: buildExplorerPreviewArgs(entry, output), signal: controller.signal });
+        if (this.previewController === controller) {
+            this.previewController = null;
+        }
+        if (controller.signal.aborted) {
+            await rm(output, { force: true }).catch(() => {
+                return undefined;
+            });
+            return { ok: false, reason: 'cancelled' };
+        }
+        if (outcome.code === null) {
+            await rm(output, { force: true }).catch(() => {
+                return undefined;
+            });
+            return { ok: false, reason: 'no-ffmpeg' };
+        }
+        if (outcome.code !== 0 || !(await fileHasBytes(output))) {
+            await rm(output, { force: true }).catch(() => {
+                return undefined;
+            });
+            return { ok: false, reason: 'failed' };
+        }
+        const previous = this.activePreview;
+        this.activePreview = { id, key, path: output };
+        if (previous !== null && previous.path !== output) {
+            await rm(previous.path, { force: true }).catch(() => {
+                return undefined;
+            });
+        }
+        return { ok: true, url: explorerMediaUrl('preview', id), converted: true };
+    }
+
+    dispose(): void {
+        this.cancelPending();
+        this.cancelPreview();
+        this.activePreview = null;
+        this.removePreviewDir();
+    }
+
+    private async generateThumbnail(videoPath: string, target: string, generation: number, signal: AbortSignal): Promise<string | null> {
+        return this.limit(async () => {
+            if (signal.aborted || generation !== this.generation) {
+                return null;
+            }
+            if (await fileHasBytes(target)) {
+                return target;
+            }
+            const runFfmpeg = this.deps.runFfmpeg();
+            if (runFfmpeg === null) {
+                return null;
+            }
+            try {
+                await mkdir(this.deps.cacheDirectory, { recursive: true });
+            } catch {
+                return null;
+            }
+            const temp = join(this.deps.cacheDirectory, `.tmp-${String(this.tempCounter)}.jpg`);
+            this.tempCounter += 1;
+            const first = await runFfmpeg({ args: buildExplorerThumbArgs(videoPath, temp, EXPLORER_THUMB_SEEK_SECONDS), signal });
+            let ready = !signal.aborted && first.code === 0 && (await fileHasBytes(temp));
+            if (!ready && !signal.aborted && first.code !== null) {
+                const retry = await runFfmpeg({ args: buildExplorerThumbArgs(videoPath, temp, 0), signal });
+                ready = !signal.aborted && retry.code === 0 && (await fileHasBytes(temp));
+            }
+            if (!ready) {
+                await rm(temp, { force: true }).catch(() => {
+                    return undefined;
+                });
+                return null;
+            }
+            try {
+                await rename(temp, target);
+            } catch {
+                await rm(temp, { force: true }).catch(() => {
+                    return undefined;
+                });
+                return (await fileHasBytes(target)) ? target : null;
+            }
+            this.schedulePrune();
+            return target;
+        });
+    }
+
+    private schedulePrune(): void {
+        if (this.pruning) {
+            this.pruneQueued = true;
+            return;
+        }
+        this.pruning = true;
+        void this.pruneCache().finally(() => {
+            this.pruning = false;
+            if (this.pruneQueued) {
+                this.pruneQueued = false;
+                this.schedulePrune();
+            }
+        });
+    }
+
+    private async cleanStaleTempThumbs(): Promise<void> {
+        try {
+            const names = await readdir(this.deps.cacheDirectory);
+            await Promise.all(
+                names
+                    .filter((name) => {
+                        return name.startsWith('.tmp-');
+                    })
+                    .map((name) => {
+                        return rm(join(this.deps.cacheDirectory, name), { force: true }).catch(() => {
+                            return undefined;
+                        });
+                    })
+            );
+        } catch {
+            return undefined;
+        }
+    }
+
+    private async pruneCache(): Promise<void> {
+        const max = this.deps.maxCacheFiles ?? DEFAULT_MAX_CACHE_FILES;
+        try {
+            const names = (await readdir(this.deps.cacheDirectory)).filter((name) => {
+                return name.endsWith('.jpg') && !name.startsWith('.tmp-');
+            });
+            if (names.length <= max) {
+                return;
+            }
+            const entries = await Promise.all(
+                names.map(async (name) => {
+                    const full = join(this.deps.cacheDirectory, name);
+                    const info = await stat(full).catch(() => {
+                        return null;
+                    });
+                    return { full, mtimeMs: info?.mtimeMs ?? 0 };
+                })
+            );
+            entries.sort((a, b) => {
+                return a.mtimeMs - b.mtimeMs;
+            });
+            const removeCount = entries.length - max;
+            await Promise.all(
+                entries.slice(0, removeCount).map((item) => {
+                    return rm(item.full, { force: true }).catch(() => {
+                        return undefined;
+                    });
+                })
+            );
+        } catch {
+            return undefined;
+        }
+    }
+
+    private takeId(): number {
+        const id = this.nextId;
+        this.nextId += 1;
+        return id;
+    }
+
+    private removePreviewDir(): void {
+        try {
+            rmSync(this.deps.previewDirectory, { recursive: true, force: true });
+        } catch {
+            return undefined;
+        }
+    }
+}

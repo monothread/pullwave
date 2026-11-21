@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
 import type { AnimeCheckState, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, AutoTranslateOffReason, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
+import type { ConvertRun } from '@shared/convert';
 import type { CutRun } from '@shared/cut';
 import type { LogBatch } from '@shared/logs';
 import type { MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
@@ -279,6 +280,63 @@ const cut: CyberApi['cut'] = {
     }
 };
 
+const convert: CyberApi['convert'] = {
+    choose: () => {
+        return ipcRenderer.invoke(IPC.convertChoose);
+    },
+    probe: (path) => {
+        return ipcRenderer.invoke(IPC.convertProbe, path);
+    },
+    pathForFile: (file) => {
+        return webUtils.getPathForFile(file);
+    },
+    start: (request) => {
+        return ipcRenderer.invoke(IPC.convertStart, request);
+    },
+    cancel: () => {
+        return ipcRenderer.invoke(IPC.convertCancel);
+    },
+    current: () => {
+        return ipcRenderer.invoke(IPC.convertCurrent);
+    },
+    onProgress: (listener) => {
+        return subscribe<ConvertRun>(IPC.eventConvertProgress, listener);
+    },
+    clear: () => {
+        return ipcRenderer.invoke(IPC.convertClear);
+    }
+};
+
+const explorer: CyberApi['explorer'] = {
+    list: (directory, showHidden) => {
+        return ipcRenderer.invoke(IPC.explorerList, directory, showHidden);
+    },
+    chooseFolder: () => {
+        return ipcRenderer.invoke(IPC.explorerChooseFolder);
+    },
+    openFolder: (directory) => {
+        return ipcRenderer.invoke(IPC.explorerOpenFolder, directory);
+    },
+    createFolder: (parentDir, name) => {
+        return ipcRenderer.invoke(IPC.explorerCreateFolder, parentDir, name);
+    },
+    rename: (path, newName) => {
+        return ipcRenderer.invoke(IPC.explorerRename, path, newName);
+    },
+    trash: (path) => {
+        return ipcRenderer.invoke(IPC.explorerTrash, path);
+    },
+    openExternal: (path) => {
+        return ipcRenderer.invoke(IPC.explorerOpenExternal, path);
+    },
+    preview: (token) => {
+        return ipcRenderer.invoke(IPC.explorerPreview, token);
+    },
+    cancelPreview: () => {
+        return ipcRenderer.invoke(IPC.explorerCancelPreview);
+    }
+};
+
 const logs: CyberApi['logs'] = {
     snapshot: (source) => {
         return ipcRenderer.invoke(IPC.logsSnapshot, source);
@@ -376,6 +434,8 @@ const api: CyberApi = {
     },
     programs,
     cut,
+    convert,
+    explorer,
     logs,
     getAppUpdateState: () => {
         return ipcRenderer.invoke(IPC.appUpdateGet);

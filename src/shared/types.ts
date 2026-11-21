@@ -48,7 +48,9 @@ import type {
     AnimeSubtitleSetting,
     LibraryAnime
 } from './anime';
+import type { ConvertApi } from './convert';
 import type { CutApi } from './cut';
+import type { ExplorerApi } from './explorer';
 import type { LogsApi } from './logs';
 import type { MangaApi, MangaOutputFormat } from './manga';
 import type { ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersions } from './programs';
@@ -425,6 +427,8 @@ export interface CyberApi {
     checkBinaries: () => Promise<BinariesStatus>;
     programs: ProgramsApi;
     cut: CutApi;
+    convert: ConvertApi;
+    explorer: ExplorerApi;
     logs: LogsApi;
     getAppUpdateState: () => Promise<AppUpdateState>;
     checkAppUpdate: () => Promise<void>;

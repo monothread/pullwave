@@ -21,6 +21,7 @@ const FILES_WITH_BARS: Record<string, string[]> = {
     'AnimeJobs.tsx': ['progress', 'progress--processing'],
     'AnimeSubtitleJobs.tsx': ['progress'],
     'AutoNextPanel.tsx': ['progress'],
+    'ConvertPanel.tsx': ['progress', 'progress--waiting'],
     'CutPanel.tsx': ['progress', 'progress--waiting'],
     'GenerateProgressPanel.tsx': ['progress'],
     'JobProgress.tsx': ['progress', 'progress--verify', 'progress--processing', 'progress--saving', 'progress--merging', 'progress--waiting', 'progress--live'],

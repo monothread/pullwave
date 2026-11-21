@@ -7,6 +7,7 @@ import { batchNavigation } from '@renderer/navigation/navigationBatch';
 import { INITIAL_SEARCH, useAnimeStore, type AnimeSelection } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useCutStore, type CutPreviewState } from '@renderer/store/cutStore';
+import { useExplorerStore } from '@renderer/store/explorerStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeDetails, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { makeAnime } from '../../helpers/animeFixtures';
@@ -16,6 +17,7 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
 const initialCut = useCutStore.getInitialState();
+const initialExplorer = useExplorerStore.getInitialState();
 const PREVIEW: CutPreviewState = { rowId: 1, number: 1, segment: { start: 10, end: 20 }, status: 'ready', url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false, error: null };
 const RESULT: AnimeSearchResult = { index: 2, title: 'Naruto' };
 const SELECTION: AnimeSelection = { result: RESULT, query: 'naruto', status: 'ready', episodes: ['1', '2'], error: null };
@@ -26,6 +28,7 @@ beforeEach(() => {
     mock = installMockApi();
     mock.api.listAnimeLibrary.mockResolvedValue([]);
     useAppStore.setState({ ...initialApp, tab: 'downloads', downloadsView: 'queue', settings: DEFAULT_SETTINGS });
+    useExplorerStore.setState({ ...initialExplorer });
     useAnimeStore.setState({
         ...initialAnime,
         view: 'search',
@@ -490,6 +493,76 @@ describe('useMouseNavigation', () => {
         expect(event.defaultPrevented).toBe(true);
         expect(useAppStore.getState().downloadsView).toBe('queue');
         expect(useCutStore.getState().preview).toEqual(PREVIEW);
+    });
+
+    it('only closes the internal player of the explorer, without leaving the page', () => {
+        const playing = {
+            entry: {
+                path: '/downloads/clip.mp4',
+                name: 'clip.mp4',
+                kind: 'video' as const,
+                extension: '.mp4',
+                sizeBytes: 1024,
+                modifiedAt: 1000,
+                token: 1,
+                thumbnailUrl: 'pullwave-explorer://thumbnail/1',
+                mediaUrl: 'pullwave-explorer://media/1'
+            },
+            status: 'ready' as const,
+            url: 'pullwave-explorer://media/1',
+            converted: false,
+            error: null
+        };
+        mount();
+        setDownloadsView('history');
+        act(() => {
+            useAppStore.getState().setDownloadsView('explorer');
+        });
+        act(() => {
+            useExplorerStore.setState({ playing });
+        });
+
+        const backEvent = press(MOUSE_BACK_BUTTON);
+        expect(backEvent.defaultPrevented).toBe(true);
+        expect(useExplorerStore.getState().playing).toBeNull();
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'explorer' });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'history' });
+    });
+
+    it('does not go forward while the internal player of the explorer is open', () => {
+        const playing = {
+            entry: {
+                path: '/downloads/clip.mp4',
+                name: 'clip.mp4',
+                kind: 'video' as const,
+                extension: '.mp4',
+                sizeBytes: 1024,
+                modifiedAt: 1000,
+                token: 1,
+                thumbnailUrl: 'pullwave-explorer://thumbnail/1',
+                mediaUrl: 'pullwave-explorer://media/1'
+            },
+            status: 'ready' as const,
+            url: 'pullwave-explorer://media/1',
+            converted: false,
+            error: null
+        };
+        mount();
+        setDownloadsView('history');
+        press(MOUSE_BACK_BUTTON);
+        act(() => {
+            useExplorerStore.setState({ playing });
+        });
+
+        const forwardEvent = press(MOUSE_FORWARD_BUTTON);
+        expect(forwardEvent.defaultPrevented).toBe(true);
+        expect(useAppStore.getState().downloadsView).toBe('queue');
+        expect(useExplorerStore.getState().playing).toEqual(playing);
+        act(() => {
+            useExplorerStore.setState({ playing: null });
+        });
     });
 
     it('does not go forward while a player is open', () => {
