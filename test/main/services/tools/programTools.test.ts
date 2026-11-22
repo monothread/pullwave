@@ -5,6 +5,7 @@ import type { extractArchive } from '@main/services/tools/archiveExtract';
 import { LookupError, type LatestDependencies } from '@main/services/tools/programLatest';
 import { ffmpegSpec, pinnedSpec, ytdlpSpec, denoSpec, aniCliSpec } from '@main/services/tools/programSpecs';
 import { PATCHED_CHECK_FILE, PREPARE_CONCURRENCY, ProgramTools, SELECTED_SUFFIX, type AniCliCheck, type RunProgram } from '@main/services/tools/programTools';
+import { ToolInstaller } from '@main/services/tools/toolInstaller';
 import { ToolDownloadError, type DownloadOptions, type DownloadResult } from '@main/services/tools/toolDownload';
 import { patchAniCli } from '@main/services/aniPatches';
 import { aniCliScript } from '../../../helpers/aniCliScripts';
@@ -1091,5 +1092,31 @@ describe('ProgramTools the root folder', () => {
     it('is the one it was given', () => {
         const context = setup();
         expect(context.tools.rootDirectory).toBe(context.root);
+    });
+
+    it('reports cleanup diagnostics to onDiagnostic when tidy encounters a filesystem error', async () => {
+        const diagnostics: string[] = [];
+        const context = setup();
+        await context.tools.install('ytdlp');
+        const spy = vi.spyOn(ToolInstaller.prototype, 'removeOthers').mockImplementationOnce(() => {
+            throw new Error('EPERM');
+        });
+        const tools = new ProgramTools({
+            rootDirectory: context.root,
+            platform: 'linux',
+            arch: 'x64',
+            onState: () => {
+                return undefined;
+            },
+            onDiagnostic: (message) => {
+                diagnostics.push(message);
+            }
+        });
+        try {
+            await tools.prepare(['ytdlp']);
+        } finally {
+            spy.mockRestore();
+        }
+        expect(diagnostics).toEqual(['Could not remove old versions of ytdlp: EPERM']);
     });
 });

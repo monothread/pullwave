@@ -55,7 +55,10 @@ async function audit(page: Page, where: string): Promise<string[]> {
             if (box.right > width + 1 / zoom || box.left < -1) {
                 problems.push(`${label}: ${name(element)} is outside the window (${Math.round(box.left)}..${Math.round(box.right)} of ${width})`);
             }
-            const parent = element.parentElement;
+            let parent = element.parentElement;
+            while (parent && getComputedStyle(parent).display === 'contents') {
+                parent = parent.parentElement;
+            }
             if (parent && parent !== document.body && parent.closest('.app')) {
                 const holder = parent.getBoundingClientRect();
                 const style = getComputedStyle(parent);

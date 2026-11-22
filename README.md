@@ -63,7 +63,7 @@ Download the latest release for your platform from the [Releases page](https://g
 | Windows 10 / 11 (64-bit) | `pullwave-x.y.z-setup.exe` |
 | Linux (64-bit) | `pullwave-x.y.z.AppImage` (portable, no installation required) |
 
-- **Windows:** run the installer. It installs per-user and creates shortcuts. Because the installer is not code-signed, SmartScreen may show *"Windows protected your PC"* — select **More info → Run anyway**.
+- **Windows:** run the assisted installer wizard. It installs per-user, lets you choose the installation directory, and creates shortcuts. Because the installer is not code-signed, SmartScreen may show *"Windows protected your PC"* — select **More info → Run anyway**.
 - **Linux:** make the AppImage executable and launch it:
   ```bash
   chmod +x pullwave-x.y.z.AppImage
@@ -113,7 +113,7 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 ### Queue & error diagnostics
 - Paste one or multiple links (**+ ADD LINK**), override the destination with **FOLDER**, or customize resolution, container, audio-only mode, and live-stream options per link with **OPTIONS**.
 - The active download banner displays the video thumbnail (held in memory only while queued), transfer speed with a 1-minute graph, ETA, and separate progress bars for video and audio parts that merge smoothly when post-processing (muxing, metadata, thumbnail embedding) begins.
-- Up to **3 downloads** run concurrently by default. **PAUSE** preserves partial files across app restarts; **RESUME** picks up where you left off. Closing the app while downloads are active asks for confirmation and cleans up unfinished files (paused downloads are kept).
+- Up to **3 downloads** run concurrently. Submitting a link that is already queued, downloading, or paused is rejected cleanly without creating duplicate jobs. **PAUSE** preserves partial files across app restarts; **RESUME** picks up where you left off. Closing the app while downloads are active asks for confirmation and cleans up unfinished files (paused downloads are kept).
 - Completed downloads trigger a toast notification, stay highlighted green for 5 seconds, and move to **History**.
 - Failed downloads explain the error clearly; clicking **SHOW DETAILS** (or any error message across the app) opens a full diagnostic modal with URL, HTTP status, command, exit code, cause, raw output, and a **COPY** button.
 
@@ -197,12 +197,12 @@ Browse airing episodes from AniList in **DAY** or **WEEK** view, converted to an
 
 - **Player:** floating controls over the video (auto-hide after 3 seconds in fullscreen), click to pause, double-click for fullscreen, `←`/`→` 5-second seek, `Escape` to close, automatic progress saving, and a 10-second **Next episode automatically** countdown panel (toggleable in player **⚙**).
 - **Subtitles:** fansub-style bold white text with dark outline across all themes. Every subtitle track offered by the source is saved alongside downloaded episodes and selectable by localized language/region/type (e.g., *Português (Brasil) · SDH*).
-- **Subtitle management (⚙ → MANAGE SUBTITLES):** re-check the source for newly added subtitle tracks (**CHECK SUBTITLES**), load your own `.vtt`/`.srt` file (**LOAD SUBTITLE**), translate a track (**TRANSLATE SUBTITLE**), or generate subtitles from audio (**CREATE SUBTITLE**). You can also batch-translate all missing subtitles for a downloaded season directly from the season screen.
+- **Subtitle management (⚙ → MANAGE SUBTITLES):** re-check the source for newly added subtitle tracks (**CHECK SUBTITLES**), load your own `.vtt`/`.srt` file (**LOAD SUBTITLE**), translate a track (**TRANSLATE SUBTITLE**), delete a translated track (**DELETE**, with confirmation), or generate subtitles from audio (**CREATE SUBTITLE**). You can also batch-translate all missing subtitles for a downloaded season directly from the season screen.
 
 <details>
 <summary><strong>Automatic episode checks, AI subtitles, library maintenance &amp; tool updates</strong></summary>
 
-- **Automatic update checks:** checks ongoing series in your library every **3 hours** (starting 2 minutes after launch if 3 hours have passed since the last check) and logs arrivals in **UPDATES** with a **NEW EPISODE** badge for the rest of the day. Series marked finished/cancelled on AniList are flagged **COMPLETE** and skipped (overridable per season via **Releases**: Automatic / Complete / Ongoing). Optional settings automatically download new episodes (capped at 24 per series per check as a safety guard) and translate their subtitles in the background.
+- **Automatic update checks:** checks ongoing series in your library every **3 hours** (starting 2 minutes after launch if 3 hours have passed since the last check) and logs arrivals in **UPDATES** with a **NEW EPISODE** badge for the rest of the day. Series marked finished/cancelled on AniList are flagged **COMPLETE** and skipped (overridable per season via **Releases**: Automatic / Complete / Ongoing). Optional settings in Anime → **⚙** automatically download new episodes (capped at 24 per series per check as a safety guard) and translate downloaded episodes in the background.
 - **AI subtitle translation (BYOK):** supports **OpenAI**, **Claude**, **Gemini**, **DeepSeek**, **GLM**, **Kimi**, or any **OpenAI-compatible** endpoint using your own API key (encrypted in the OS keyring). Only dialogue lines are sent — timestamps stay local — with an upfront estimate of lines, requests, and approximate tokens before anything is sent. Saved as `<video>.translated-<Language>.vtt`.
 - **AI subtitle generation (speech-to-text, BYOK):** extracts audio locally via `ffmpeg` and saves `<video>.generated-<Language>.vtt`:
   - **OpenAI (`gpt-transcribe`):** splits audio at detected speech pauses and transcribes each piece with series title and previous-line context, then translates via your translation model when a different output language is chosen.
@@ -251,7 +251,7 @@ Read and collect manga from [Mihon/Tachiyomi](https://mihon.app) extensions on 6
 ![Manga settings](docs/screenshots/manga-settings.png)
 
 - **Fast, resilient downloads:** up to **3 concurrent chapters per source** across **3 sources at once** (9 total), automatic retries, per-chapter and global **PAUSE ALL / RESUME ALL**, resume across restarts, and speed graphs.
-- **Clean archive format:** saves chapters as **CBZ** (with `ComicInfo.xml` metadata) or loose image folders inside `Pullwave Manga/<manga>/`.
+- **Clean archive format & library import:** saves chapters as **CBZ** (with `ComicInfo.xml` metadata) or loose image folders inside `Pullwave Manga/<manga>/` alongside `pullwave.json` metadata; **IMPORT LIBRARY** in the Manga Library scans folders inside your manga directory to rebuild or relink your library offline (reading `pullwave.json`, falling back to `ComicInfo.xml` or folder/file names).
 - **Safe folder migration & disk ring:** once titles are in your library, **MIGRATE FOLDER** copies, verifies, and switches your manga folder safely; **Disk space** shows live usage alongside your anime library.
 
 ---

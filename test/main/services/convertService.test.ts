@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { ConvertRun } from '@shared/convert';
 import { ConvertService } from '@main/services/convertService';
 import type { FfmpegOutcome, FfmpegRun, RunFfmpeg } from '@main/services/cutService';
@@ -157,7 +158,7 @@ describe('ConvertService', () => {
                 return undefined;
             },
             listDirectory: async () => {
-                return ['/downloads/clip.mp3'];
+                return [join('/downloads', 'clip.mp3')];
             },
             reservePath: async () => {
                 return true;
@@ -182,7 +183,7 @@ describe('ConvertService', () => {
                 name: 'clip.mp4',
                 status: 'done',
                 percent: 100,
-                outputPath: '/downloads/clip (2).mp3',
+                outputPath: join('/downloads', 'clip (2).mp3'),
                 error: null
             },
             {
@@ -190,7 +191,7 @@ describe('ConvertService', () => {
                 name: 'clip.mkv',
                 status: 'done',
                 percent: 100,
-                outputPath: '/downloads/clip (3).mp3',
+                outputPath: join('/downloads', 'clip (3).mp3'),
                 error: null
             }
         ]);
@@ -259,12 +260,12 @@ describe('ConvertService', () => {
         const sourceStart = await service.start({ paths: ['/movies/a.mp4'], format: 'flac', outputMode: 'source' });
         expect(sourceStart.ok).toBe(true);
         await waitForDone(updates);
-        expect(outputs).toEqual(['/movies/a.flac']);
+        expect(outputs).toEqual([join('/movies', 'a.flac')]);
 
         const customStart = await service.start({ paths: ['/movies/b.mp4'], format: 'wav', outputMode: 'custom', outputDirectory: '/custom-out' });
         expect(customStart.ok).toBe(true);
         await waitForDone(updates);
-        expect(outputs).toEqual(['/movies/a.flac', '/custom-out/b.wav']);
+        expect(outputs).toEqual([join('/movies', 'a.flac'), join('/custom-out', 'b.wav')]);
     });
 
     it('marks an individual failing item as error and continues remaining items, and supports cancelling', async () => {
@@ -383,8 +384,8 @@ describe('ConvertService', () => {
             outputPath: null,
             error: 'encoder failed'
         });
-        expect(reservePath).toHaveBeenNthCalledWith(1, '/downloads/fail.mp3');
-        expect(reservePath).toHaveBeenNthCalledWith(2, '/downloads/fail (2).mp3');
-        expect(removed).toEqual(['/downloads/fail (2).mp3']);
+        expect(reservePath).toHaveBeenNthCalledWith(1, join('/downloads', 'fail.mp3'));
+        expect(reservePath).toHaveBeenNthCalledWith(2, join('/downloads', 'fail (2).mp3'));
+        expect(removed).toEqual([join('/downloads', 'fail (2).mp3')]);
     });
 });

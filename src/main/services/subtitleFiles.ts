@@ -1,6 +1,6 @@
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import { MAX_SUBTITLE_BYTES, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack } from '@shared/anime';
+import { MAX_SUBTITLE_BYTES, type AnimeSubtitleDeleteResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack } from '@shared/anime';
 
 export const SOURCE_SUBTITLE_PREFIX = 'subtitle-';
 export const IMPORTED_SUBTITLE_PREFIX = 'import-';
@@ -18,6 +18,7 @@ export interface SubtitleFileSystem {
     read: (path: string) => string | null;
     size: (path: string) => number | null;
     write: (path: string, content: string) => void;
+    remove?: (path: string) => void;
 }
 
 export const defaultSubtitleFileSystem: SubtitleFileSystem = {
@@ -46,6 +47,9 @@ export const defaultSubtitleFileSystem: SubtitleFileSystem = {
     write: (path, content) => {
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, content, 'utf-8');
+    },
+    remove: (path) => {
+        rmSync(path, { force: true });
     }
 };
 
@@ -241,4 +245,29 @@ export async function importSubtitle(videoPath: string, dependencies: SubtitleIm
         }),
         imported: imported.track
     };
+}
+
+export function deleteTranslatedSubtitle(
+    videoPath: string,
+    trackId: string,
+    files: SubtitleFileSystem = defaultSubtitleFileSystem
+): AnimeSubtitleDeleteResponse {
+    if (!trackId.startsWith(TRANSLATED_SUBTITLE_PREFIX)) {
+        return { ok: false, reason: 'not-found' };
+    }
+    const found = listSubtitleFiles(videoPath, files).find((file) => {
+        return file.track.id === trackId && file.track.kind === 'translated';
+    });
+    if (found === undefined) {
+        return { ok: false, reason: 'not-found' };
+    }
+    const remove = files.remove ?? ((target: string): void => {
+        rmSync(target, { force: true });
+    });
+    try {
+        remove(found.path);
+    } catch {
+        return { ok: false, reason: 'unreadable' };
+    }
+    return { ok: true, tracks: listSubtitleTracks(videoPath, files) };
 }

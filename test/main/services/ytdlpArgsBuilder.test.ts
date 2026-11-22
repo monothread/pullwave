@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { FILE_PRINT_TEMPLATE, INFO_PRINT_TEMPLATE, POSTPROCESS_TEMPLATE, PROGRESS_TEMPLATE, STREAM_PRINT_TEMPLATE, THUMBNAIL_PRINT_TEMPLATE } from '@main/services/progressParser';
-import { buildYtdlpArgs, escapeTitleForTemplate, splitArguments } from '@main/services/ytdlpArgsBuilder';
+import { buildYtdlpArgs, splitArguments } from '@main/services/ytdlpArgsBuilder';
 
 const URL = 'https://example.com/watch?v=abc';
 const DEFAULT_DIR = '/home/u/Downloads';
@@ -225,94 +225,6 @@ describe('buildYtdlpArgs', () => {
     });
 });
 
-describe('escapeTitleForTemplate', () => {
-    it('replaces path separators, reserved characters and control characters with spaces', () => {
-        expect(escapeTitleForTemplate('a/b\\c:d*e?f"g<h>i|j\tk\nl', 100)).toBe('a b c d e f g h i j k l');
-    });
-
-    it('collapses whitespace and trims', () => {
-        expect(escapeTitleForTemplate('   Episode    14  ', 100)).toBe('Episode 14');
-    });
-
-    it('cuts the title to the maximum length and trims the cut end', () => {
-        expect(escapeTitleForTemplate('Hello wonderful world', 6)).toBe('Hello');
-        expect(escapeTitleForTemplate('abcdefghij', 4)).toBe('abcd');
-    });
-
-    it('escapes percent signs so they are not read as template fields', () => {
-        expect(escapeTitleForTemplate('100% %(title)s', 100)).toBe('100%% %%(title)s');
-    });
-
-    it('keeps international characters', () => {
-        expect(escapeTitleForTemplate('Mushoku Tensei — 無職転生', 100)).toBe('Mushoku Tensei — 無職転生');
-    });
-
-    it('can end up empty', () => {
-        expect(escapeTitleForTemplate('///', 100)).toBe('');
-    });
-});
-
-describe('buildYtdlpArgs with request extras (streams found on a page)', () => {
-    const build = (extras: Parameters<typeof buildYtdlpArgs>[4]) => {
-        return buildYtdlpArgs(URL, DEFAULT_SETTINGS, DEFAULT_DIR, null, extras);
-    };
-
-    it('adds the referer, the user agent and the cookie header', () => {
-        const args = build({ referer: 'https://site.test/ep-1', userAgent: 'Agent/1.0', cookie: 'sid=abc; t=1' });
-        expect(args[args.indexOf('--referer') + 1]).toBe('https://site.test/ep-1');
-        expect(args[args.indexOf('--user-agent') + 1]).toBe('Agent/1.0');
-        expect(args[args.indexOf('--add-header') + 1]).toBe('Cookie:sid=abc; t=1');
-    });
-
-    it('puts them before the user extra arguments and the URL separator', () => {
-        const args = buildYtdlpArgs(URL, { ...DEFAULT_SETTINGS, extraArgs: '--no-mtime' }, DEFAULT_DIR, null, { referer: 'https://r.test/' });
-        expect(args.slice(-5)).toEqual(['--referer', 'https://r.test/', '--no-mtime', '--', URL]);
-    });
-
-    it('names the file after the page title instead of the stream name', () => {
-        const args = build({ title: 'Show: Episode 14 / 100%' });
-        expect(args[args.indexOf('-o') + 1]).toBe('Show Episode 14 100%% [%(id)s].%(ext)s');
-    });
-
-    it('limits the page title to the configured maximum length', () => {
-        const args = buildYtdlpArgs(URL, { ...DEFAULT_SETTINGS, maxTitleLength: 20 }, DEFAULT_DIR, null, { title: 'A very long episode title that goes on' });
-        expect(args[args.indexOf('-o') + 1]).toBe('A very long episode [%(id)s].%(ext)s');
-    });
-
-    it('falls back to the default name when the title has nothing usable', () => {
-        expect(build({ title: '///' })[build({ title: '///' }).indexOf('-o') + 1]).toBe('%(title).80s [%(id)s].%(ext)s');
-        expect(build({ title: '' })[build({ title: '' }).indexOf('-o') + 1]).toBe('%(title).80s [%(id)s].%(ext)s');
-    });
-
-    it.each([
-        [4, '--force-ipv4', '--force-ipv6'],
-        [6, '--force-ipv6', '--force-ipv4']
-    ] as const)('forces the IP family %s the address is bound to', (family, expected, other) => {
-        const args = build({ ipFamily: family });
-        expect(args).toContain(expected);
-        expect(args).not.toContain(other);
-    });
-
-    it('places the IP family flag with the other request arguments, before the URL separator', () => {
-        const args = build({ referer: 'https://r.test/', ipFamily: 6 });
-        expect(args.slice(-5)).toEqual(['--referer', 'https://r.test/', '--force-ipv6', '--', URL]);
-    });
-
-    it('never passes the page address to yt-dlp', () => {
-        const args = build({ pageUrl: 'https://page.test/ep-1' });
-        expect(args).not.toContain('https://page.test/ep-1');
-        expect(args).toEqual(buildYtdlpArgs(URL, DEFAULT_SETTINGS, DEFAULT_DIR));
-    });
-
-    it('adds nothing for empty extras', () => {
-        expect(build({})).toEqual(buildYtdlpArgs(URL, DEFAULT_SETTINGS, DEFAULT_DIR));
-        const args = build({ referer: '', userAgent: '', cookie: '' });
-        expect(args).not.toContain('--referer');
-        expect(args).not.toContain('--user-agent');
-        expect(args).not.toContain('--add-header');
-    });
-});
-
 describe('buildYtdlpArgs for live streams', () => {
     const build = (overrides: Partial<Settings>) => {
         return buildYtdlpArgs(URL, { ...DEFAULT_SETTINGS, ...overrides }, DEFAULT_DIR);
@@ -363,7 +275,7 @@ describe('buildYtdlpArgs for live streams', () => {
 
         it('write to a file with the part number', () => {
             expect(resume({}, 2)[resume({}, 2).indexOf('-o') + 1]).toBe('%(title).80s [%(id)s] (part 2).%(ext)s');
-            expect(resume({}, 5, { title: 'Show' })[resume({}, 5, { title: 'Show' }).indexOf('-o') + 1]).toBe('Show [%(id)s] (part 5).%(ext)s');
+            expect(resume({}, 5)[resume({}, 5).indexOf('-o') + 1]).toBe('%(title).80s [%(id)s] (part 5).%(ext)s');
         });
 
         it('neither wait for a scheduled stream nor start from the beginning again', () => {
@@ -375,8 +287,8 @@ describe('buildYtdlpArgs for live streams', () => {
         });
 
         it('keep everything else of the request', () => {
-            const args = resume({ useBrowserCookies: true, cookiesBrowser: 'chrome' }, 2, { referer: 'https://page.test/' });
-            expect(args).toEqual(expect.arrayContaining(['--referer', 'https://page.test/', '--cookies-from-browser']));
+            const args = resume({ useBrowserCookies: true, cookiesBrowser: 'chrome' }, 2, { downloadDir: '/custom/dir' });
+            expect(args).toEqual(expect.arrayContaining(['-P', '/custom/dir', '--cookies-from-browser', 'chrome']));
         });
 
         it('do not add a part number to the first recording or a filter', () => {

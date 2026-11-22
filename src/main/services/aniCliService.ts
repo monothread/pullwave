@@ -108,7 +108,7 @@ export class AniCliService {
         if (sanitizeQuery(query).length === 0) {
             return failure('The search is empty.');
         }
-        const handle = this.start(buildSearchArgs(query), '.', {}, undefined, Math.min(Math.max(FIRST_RESULT, Math.floor(atLeast)), MAX_SEARCH_RESULTS));
+        const handle = this.start(buildSearchArgs(query), '.', { expectMenuExit: true }, undefined, Math.min(Math.max(FIRST_RESULT, Math.floor(atLeast)), MAX_SEARCH_RESULTS));
         if (handle === null) {
             return failure(MISSING_SCRIPT);
         }
@@ -131,7 +131,7 @@ export class AniCliService {
     }
 
     async episodes(query: string, index: number): Promise<AniRunResult<string[]>> {
-        const handle = this.start(buildEpisodesArgs(query, index), '.', {}, undefined, index);
+        const handle = this.start(buildEpisodesArgs(query, index), '.', { expectMenuExit: true }, undefined, index);
         if (handle === null) {
             return failure(MISSING_SCRIPT);
         }

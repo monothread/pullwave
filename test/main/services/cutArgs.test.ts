@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { buildCutArgs, clockForName, freePath, mediaOf, outputFormat, parseMediaProbe, parseProgressSeconds, partFileName, safeName } from '@main/services/cutArgs';
 
 const VIDEO_PROBE = `Input #0, matroska,webm, from 'a.mkv':
@@ -199,15 +200,15 @@ describe('safeName', () => {
 
 describe('freePath', () => {
     it('is the path itself when it is free', () => {
-        expect(freePath('/out/a.mp4', () => { return false; })).toBe('/out/a.mp4');
+        expect(freePath(join('/out', 'a.mp4'), () => { return false; })).toBe(join('/out', 'a.mp4'));
     });
 
     it('puts a number before the extension until the path is free', () => {
-        const taken = new Set(['/out/a.mp4', '/out/a (2).mp4']);
-        expect(freePath('/out/a.mp4', (candidate) => { return taken.has(candidate); })).toBe('/out/a (3).mp4');
+        const taken = new Set([join('/out', 'a.mp4'), join('/out', 'a (2).mp4')]);
+        expect(freePath(join('/out', 'a.mp4'), (candidate) => { return taken.has(candidate); })).toBe(join('/out', 'a (3).mp4'));
     });
 
     it('works for a name with no extension', () => {
-        expect(freePath('/out/a', (candidate) => { return candidate === '/out/a'; })).toBe('/out/a (2)');
+        expect(freePath(join('/out', 'a'), (candidate) => { return candidate === join('/out', 'a'); })).toBe(join('/out', 'a (2)'));
     });
 });

@@ -1382,3 +1382,36 @@ describe('AnimePlayer: the preview of the timeline', () => {
         expect(document.querySelectorAll('video')).toHaveLength(1);
     });
 });
+
+describe('AnimePlayer: deleting a translated subtitle', () => {
+    it('lists translated subtitles in Manage Subtitles, confirms deletion, updates tracks and resets active selection', async () => {
+        const user = userEvent.setup();
+        const source = { id: 'subtitle-English', label: 'English', kind: 'source' as const };
+        const translated = { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' as const };
+        mock.api.listAnimeSubtitles.mockResolvedValue([source, translated]);
+        mock.api.deleteAnimeSubtitle.mockResolvedValue({ ok: true, tracks: [source] });
+        window.localStorage.setItem('pullwave-subtitle-1', 'translated-Spanish');
+
+        render(<AnimePlayer />);
+        await vi.waitFor(() => {
+            expect(mock.api.listAnimeSubtitles).toHaveBeenCalledWith(1);
+        });
+
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+
+        expect(screen.getByText('Translated subtitles')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'DELETE Spanish' }));
+        expect(screen.getByRole('dialog', { name: 'Delete translated subtitle' })).toBeInTheDocument();
+
+        const confirmDialog = screen.getByRole('dialog', { name: 'Delete translated subtitle' });
+        await user.click(within(confirmDialog).getByRole('button', { name: 'DELETE' }));
+
+        await vi.waitFor(() => {
+            expect(mock.api.deleteAnimeSubtitle).toHaveBeenCalledWith(1, 'translated-Spanish');
+        });
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'TRANSLATED SUBTITLE DELETED.' });
+        expect(window.localStorage.getItem('pullwave-subtitle-1')).toBe('subtitle-English');
+        expect(screen.queryByRole('button', { name: 'DELETE Spanish' })).not.toBeInTheDocument();
+    });
+});

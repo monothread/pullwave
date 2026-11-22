@@ -1012,7 +1012,8 @@ describe('MangaDb renaming a manga', () => {
         const one = db.ensureChapter(manga.id, chapter(1));
         db.markDone(one.id, '/m/One Piece/Chapter 1.cbz', 10, 3);
         const other = db.upsertManga({ remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: null });
-        db.recordReading(RECORD);
+        const savedOne = db.recordReading(RECORD);
+        expect(savedOne).toMatchObject({ sourceId: '123', mangaRemoteId: 7, title: 'One Piece', page: 2, pageCount: 9, libraryMangaId: manga.id });
         db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
         expect(db.renameManga(manga.id, 'New Title')).toBe(true);
         expect(db.getManga(manga.id)).toMatchObject({ id: manga.id, sourceId: '123', remoteId: 7, title: 'New Title', thumbnailUrl: 'http://127.0.0.1:1/t.jpg' });

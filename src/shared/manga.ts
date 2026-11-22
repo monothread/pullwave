@@ -3,6 +3,8 @@ import type { ErrorDetails } from './errorDetails';
 
 export const MANGA_STATUSES = ['unknown', 'ongoing', 'completed', 'hiatus', 'cancelled'] as const;
 export type MangaStatus = (typeof MANGA_STATUSES)[number];
+export const LOCAL_MANGA_SOURCE_ID = 'local';
+export const MAX_READING_KEPT = 500;
 
 export const CONTENT_WARNINGS = ['SAFE', 'MIXED', 'NSFW'] as const;
 export type ContentWarning = (typeof CONTENT_WARNINGS)[number];
@@ -366,6 +368,18 @@ export type MangaMigrationFailure = 'cancelled' | 'busy' | 'same' | 'inside' | '
 
 export type MangaMigrationResponse = { ok: true; chapters: number; files: number; destination: string } | { ok: false; reason: MangaMigrationFailure };
 
+export interface MangaImportSummary {
+    added: number;
+    relinked: number;
+    skipped: number;
+    ignored: number;
+}
+
+export type MangaImportResponse =
+    | ({ ok: true } & MangaImportSummary)
+    | { ok: false; reason: 'cancelled' | 'busy' }
+    | { ok: false; reason: 'outside'; folder: string };
+
 export interface MangaNewChapters {
     count: number;
     titles: string[];
@@ -464,11 +478,12 @@ export interface MangaApi {
     clearUpdates: () => Promise<void>;
     checkNewChapters: (mangaId: number | null) => Promise<MangaCheckResponse>;
     checkState: () => Promise<MangaCheckState>;
-    recordReading: (record: ReadingRecord) => Promise<void>;
+    recordReading: (record: ReadingRecord) => Promise<ReadingEntry | null>;
     readingHistory: () => Promise<ReadingEntry[]>;
     removeReading: (id: number) => Promise<void>;
     clearReading: () => Promise<void>;
     migrateFolder: () => Promise<MangaMigrationResponse>;
+    importLibrary: () => Promise<MangaImportResponse>;
     setSeries: (request: MangaSeriesRequest) => Promise<MangaSeriesResponse>;
     renameSeries: (mangaIds: number[], series: string) => Promise<MangaRenameSeriesResponse>;
     groups: () => Promise<MangaGroup[]>;

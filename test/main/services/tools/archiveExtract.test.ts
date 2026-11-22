@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import * as tar from 'tar';
 import { ZipFile } from 'yazl';
 import { createWriteStream } from 'node:fs';
@@ -66,7 +66,7 @@ describe('isExcluded', () => {
 
 describe('safeTarget', () => {
     it('resolves inside the destination', () => {
-        expect(safeTarget('/dest', 'a/b')).toBe('/dest/a/b');
+        expect(safeTarget('/dest', 'a/b')).toBe(resolve('/dest', 'a', 'b'));
     });
 
     it('refuses a path that goes out or an absolute one', () => {

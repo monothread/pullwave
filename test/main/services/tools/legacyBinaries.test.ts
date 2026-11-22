@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LEGACY_FILES, removeLegacyBinaries } from '@main/services/tools/legacyBinaries';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
@@ -73,5 +73,27 @@ describe('removeLegacyBinaries', () => {
         const { dataDir, bin } = withBin(['yt-dlp']);
         symlinkSync(join(bin, 'nowhere'), join(bin, 'ani-cli'));
         expect(removeLegacyBinaries(dataDir)).toEqual(['yt-dlp']);
+    });
+
+    it('reports unexpected removal errors to onError without throwing', () => {
+        const { dataDir, bin } = withBin(['yt-dlp', 'ani-cli']);
+        const errors: string[] = [];
+        const removed = removeLegacyBinaries(
+            dataDir,
+            [],
+            (message) => {
+                errors.push(message);
+            },
+            (path) => {
+                if (path.endsWith('yt-dlp')) {
+                    throw new Error('EACCES: permission denied');
+                }
+                rmSync(path);
+            }
+        );
+        expect(removed).toEqual(['ani-cli']);
+        expect(errors).toEqual([`Could not remove legacy binary ${join(bin, 'yt-dlp')}: EACCES: permission denied`]);
+        expect(existsSync(join(bin, 'yt-dlp'))).toBe(true);
+        expect(existsSync(join(bin, 'ani-cli'))).toBe(false);
     });
 });

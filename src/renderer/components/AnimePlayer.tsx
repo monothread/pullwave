@@ -133,6 +133,19 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
         }
     }
 
+    async function deleteTranslatedSubtitle(trackId: string): Promise<void> {
+        const result = await window.api.deleteAnimeSubtitle(episode.id, trackId);
+        if (!result.ok) {
+            setNotice({ kind: 'error', message: t('anime.player.deleteSubtitle.failed') });
+            return;
+        }
+        setTracks(result.tracks);
+        if (subtitle === trackId) {
+            chooseSubtitle(initialSubtitle(optionsOf(result.tracks, language), undefined));
+        }
+        setNotice({ kind: 'info', message: t('anime.player.deleteSubtitle.done') });
+    }
+
     function save(): void {
         const element = video.current;
         if (!element || !Number.isFinite(element.duration)) {
@@ -290,6 +303,13 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
                     hasSubtitles: tracks.length > 0,
                     checking,
                     failure: importFailure === null ? null : t(importFailureKey(importFailure)),
+                    translatedSubtitles: tracks
+                        .filter((track) => {
+                            return track.kind === 'translated';
+                        })
+                        .map((track) => {
+                            return { id: track.id, label: track.label };
+                        }),
                     onLoad: () => {
                         void loadSubtitle();
                     },
@@ -302,6 +322,9 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
                     },
                     onCheck: () => {
                         void checkSubtitles();
+                    },
+                    onDeleteTranslated: (trackId) => {
+                        void deleteTranslatedSubtitle(trackId);
                     }
                 }}
             />

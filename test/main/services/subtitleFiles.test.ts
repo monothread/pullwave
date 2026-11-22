@@ -4,6 +4,7 @@ import { MAX_SUBTITLE_BYTES } from '@shared/anime';
 import {
     defaultSubtitleFileSystem,
     DEFAULT_SUBTITLE_LABEL,
+    deleteTranslatedSubtitle,
     importedLabel,
     generatedSubtitlePath,
     hasTranslatedSubtitle,
@@ -529,6 +530,44 @@ describe('the labels of the subtitles of the source', () => {
         const path = sourceSubtitlePath(VIDEO, 'Portuguese - Brazil');
         const files = memory({ [path]: 'WEBVTT' });
         expect(listSubtitleTracks(VIDEO, files)).toEqual([{ id: 'subtitle-Portuguese - Brazil', label: 'Portuguese - Brazil', kind: 'source' }]);
+    });
+});
+
+describe('deleteTranslatedSubtitle', () => {
+    it('deletes an existing translated subtitle and returns the remaining tracks', () => {
+        const directory = makeTempDir();
+        const video = join(directory, 'Naruto Episode 1.mp4');
+        const source = join(directory, 'Naruto Episode 1.subtitle-English.vtt');
+        const translated = join(directory, 'Naruto Episode 1.translated-Spanish.vtt');
+        writeFileSync(video, 'v');
+        writeFileSync(source, 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi\n');
+        writeFileSync(translated, 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n');
+
+        const result = deleteTranslatedSubtitle(video, 'translated-Spanish');
+        expect(result).toEqual({ ok: true, tracks: [{ id: 'subtitle-English', label: 'English', kind: 'source' }] });
+        expect(existsSync(translated)).toBe(false);
+        expect(existsSync(source)).toBe(true);
+    });
+
+    it('refuses to delete non-translated tracks and reports not-found when missing', () => {
+        const source = join(DIR, 'Naruto Episode 1.subtitle-English.vtt');
+        const imported = join(DIR, 'Naruto Episode 1.import-fan.vtt');
+        const files = memory({ [VIDEO]: 'v', [source]: 'WEBVTT\n', [imported]: 'WEBVTT\n' });
+
+        expect(deleteTranslatedSubtitle(VIDEO, 'subtitle-English', files)).toEqual({ ok: false, reason: 'not-found' });
+        expect(deleteTranslatedSubtitle(VIDEO, 'import-fan', files)).toEqual({ ok: false, reason: 'not-found' });
+        expect(deleteTranslatedSubtitle(VIDEO, 'translated-Missing', files)).toEqual({ ok: false, reason: 'not-found' });
+    });
+
+    it('returns unreadable when deleting the file throws', () => {
+        const translated = join(DIR, 'Naruto Episode 1.translated-Spanish.vtt');
+        const files: SubtitleFileSystem = {
+            ...memory({ [VIDEO]: 'v', [translated]: 'WEBVTT\n' }),
+            remove: () => {
+                throw new Error('EACCES');
+            }
+        };
+        expect(deleteTranslatedSubtitle(VIDEO, 'translated-Spanish', files)).toEqual({ ok: false, reason: 'unreadable' });
     });
 });
 

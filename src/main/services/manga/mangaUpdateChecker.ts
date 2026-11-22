@@ -1,5 +1,5 @@
 import { IDLE_MANGA_CHECK_STATE, type ArrivalOrigin, type LibraryManga, type MangaChapter, type MangaCheckResponse, type MangaCheckState, type MangaDetails, type MangaNewChapters, type MangaStatus } from '@shared/manga';
-import type { MangaDb } from './mangaDb';
+import { LOCAL_MANGA_SOURCE_ID, type MangaDb } from './mangaDb';
 
 export const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
@@ -102,6 +102,9 @@ export class MangaUpdateChecker {
         if (manga === null) {
             return { ok: false, error: { code: 'NOT_FOUND', message: 'The manga is not in the library.' } };
         }
+        if (manga.sourceId === LOCAL_MANGA_SOURCE_ID) {
+            return { ok: true, count: 0, titles: [], failed: 0, skipped: 1 };
+        }
         const installed = this.deps.installedSourceIds === undefined ? null : await this.installedSources();
         if (installed !== null && !installed.has(manga.sourceId)) {
             return { ok: true, count: 0, titles: [], failed: 0, skipped: 1 };
@@ -128,7 +131,7 @@ export class MangaUpdateChecker {
             return origin === 'manual' || !isMangaOver(manga);
         });
         const asked = library.filter((manga) => {
-            return installed === null || installed.has(manga.sourceId);
+            return manga.sourceId !== LOCAL_MANGA_SOURCE_ID && (installed === null || installed.has(manga.sourceId));
         });
         let done = 0;
         if (asked.length > 0) {
@@ -139,7 +142,7 @@ export class MangaUpdateChecker {
                 if (this.stopped) {
                     break;
                 }
-                if (installed !== null && !installed.has(manga.sourceId)) {
+                if (manga.sourceId === LOCAL_MANGA_SOURCE_ID || (installed !== null && !installed.has(manga.sourceId))) {
                     skipped += 1;
                     continue;
                 }

@@ -6,7 +6,7 @@ import { sanitizeDownloadOptions } from './settingsSanitizer';
 
 export interface PausedDownload {
     job: DownloadJob;
-    extras: Omit<RequestExtras, 'cookie' | 'resumedPart'>;
+    extras: Omit<RequestExtras, 'resumedPart'>;
     outputPaths: string[];
 }
 
@@ -59,12 +59,7 @@ export function readExtras(raw: unknown): PausedDownload['extras'] {
     const entry = raw as Record<string, unknown>;
     const options = sanitizeDownloadOptions(entry.options);
     return {
-        ...(isShortText(entry.referer) ? { referer: entry.referer } : {}),
-        ...(isShortText(entry.userAgent) ? { userAgent: entry.userAgent } : {}),
-        ...(isShortText(entry.title) ? { title: entry.title } : {}),
         ...(isShortText(entry.downloadDir) && isAbsolute(entry.downloadDir) ? { downloadDir: entry.downloadDir } : {}),
-        ...(entry.ipFamily === 4 || entry.ipFamily === 6 ? { ipFamily: entry.ipFamily } : {}),
-        ...(isShortText(entry.pageUrl) ? { pageUrl: entry.pageUrl } : {}),
         ...(Object.keys(options).length > 0 ? { options } : {})
     };
 }
@@ -83,12 +78,16 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
     if (!isText(job.id) || !isText(job.url) || !isNumber(job.percent) || !isNumber(job.createdAt)) {
         return null;
     }
+    const trimmedUrl = job.url.trim();
+    if (trimmedUrl.length === 0) {
+        return null;
+    }
     const extras = readExtras(entry.extras);
     const outputPaths = (Array.isArray(entry.outputPaths) ? entry.outputPaths : []).filter(isShortText);
     return {
         job: {
             id: job.id,
-            url: job.url,
+            url: trimmedUrl,
             status: 'paused',
             title: typeof job.title === 'string' ? job.title : null,
             percent: Math.min(100, Math.max(0, job.percent)),
@@ -97,7 +96,6 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
             filePath: null,
             error: null,
             createdAt: job.createdAt,
-            pageUrl: typeof job.pageUrl === 'string' ? job.pageUrl : null,
             live: false,
             elapsedSeconds: 0,
             downloadedBytes: 0,

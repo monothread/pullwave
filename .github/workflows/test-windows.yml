@@ -41,8 +41,8 @@ jobs:
       - name: Fetch the programs the tests run for real (yt-dlp, ffmpeg, deno, ani-cli, busybox, curl)
         run: node scripts/fetch-binaries.mjs
 
-      - name: Unit tests of the anime section that depend on the system
-        run: npx vitest run test/main/services/ani test/main/services/anime mediaProtocol streamProxy registerAnimeHandlers animeRuntime
+      - name: Unit tests
+        run: npx vitest run
 
       - name: Build
         run: npm run build
@@ -60,8 +60,8 @@ jobs:
         if: ${{ inputs.scope == 'all' }}
         run: npx playwright test --project=primary-tagged --workers=1 test/e2e/anime.e2e-spec.ts
 
-      - name: Keep the results when something failed
-        if: failure()
+      - name: Keep the results when something failed or was cancelled
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results

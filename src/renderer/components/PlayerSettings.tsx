@@ -32,9 +32,11 @@ export interface SubtitleManagerSetting {
     hasSubtitles: boolean;
     checking: boolean;
     failure: string | null;
+    translatedSubtitles?: readonly SubtitleOption[];
     onLoad: () => void;
     onCreate: () => void;
     onCheck: () => void;
+    onDeleteTranslated?: (trackId: string) => void;
 }
 
 interface SettingRowProps {

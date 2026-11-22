@@ -2,6 +2,7 @@ import type { RepairResult } from './imageHeaderRepair';
 import { posix, win32 } from 'node:path';
 import type { AniDownloadProgress, AniError, AniErrorCode, AniPartStart, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
 import { ANIME_JOIN_STEP } from '@shared/anime';
+import { CONCURRENT_DOWNLOADS } from '@shared/constants';
 import type { DownloadPart, Settings } from '@shared/types';
 import type { AnimeDb } from './animeDb';
 import {
@@ -36,6 +37,15 @@ export interface AnimeQueueDependencies {
     removeFile?: (path: string) => void;
     platform?: NodeJS.Platform;
     sourceProvider?: () => string | null;
+    maxConcurrent?: number;
+}
+
+interface PendingReplacement {
+    animeId: number;
+    episodeNumber: string;
+    filePath: string;
+    sizeBytes: number | null;
+    noAudio: boolean;
 }
 
 export const ANIME_SHUTDOWN_TIMEOUT_MS = 5000;
@@ -57,6 +67,8 @@ export class AnimeDownloadQueue {
     private readonly tries = new Map<number, number>();
     private held = false;
     private readonly startsWhileHeld = new Set<number>();
+    private readonly pendingReplacements = new Map<number, PendingReplacement>();
+    private readonly replacementDirs = new Map<number, string>();
 
     constructor(private readonly deps: AnimeQueueDependencies) {}
 
@@ -141,10 +153,34 @@ export class AnimeDownloadQueue {
     }
 
     redownload(episodeId: number): void {
+        if (this.closed) {
+            return;
+        }
         const episode = this.deps.db.getEpisode(episodeId);
         const anime = episode ? this.deps.db.getAnime(episode.animeId) : null;
-        if (!episode || !anime || episode.status !== 'done' || this.isActiveJob(episodeId) || !this.canReplaceVideo(episode)) {
+        if (!episode || !anime || episode.status !== 'done' || this.isActiveJob(episodeId) || !this.canQueueReplacement(episode)) {
             return;
+        }
+        if (!this.isFileMissing(episode) && episode.filePath !== null) {
+            if (this.hasFreeSlot()) {
+                const platform = this.deps.platform ?? process.platform;
+                const downloadDir = this.downloadDirectoryOf(anime, episode.number, platform);
+                try {
+                    this.deps.ensureDirectory(downloadDir);
+                    this.deps.removeFile?.(episode.filePath);
+                } catch {
+                    return;
+                }
+                this.replacementDirs.set(episodeId, downloadDir);
+            } else {
+                this.pendingReplacements.set(episodeId, {
+                    animeId: anime.id,
+                    episodeNumber: episode.number,
+                    filePath: episode.filePath,
+                    sizeBytes: episode.sizeBytes,
+                    noAudio: episode.noAudio
+                });
+            }
         }
         this.deps.db.markForRedownload(episodeId);
         this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, episode.number));
@@ -249,6 +285,16 @@ export class AnimeDownloadQueue {
             handle.cancel();
             return;
         }
+        const replacement = this.pendingReplacements.get(episodeId);
+        if (replacement !== undefined) {
+            this.pendingReplacements.delete(episodeId);
+            this.restoreReplacement(episodeId, replacement);
+            this.startsWhileHeld.delete(episodeId);
+            this.tries.delete(episodeId);
+            this.update(job, { status: 'cancelled' });
+            this.deps.onLibraryEntryChanged(job.animeId);
+            return;
+        }
         this.removePartial(job.animeId, job.episode);
         this.startsWhileHeld.delete(episodeId);
         this.tries.delete(episodeId);
@@ -269,7 +315,11 @@ export class AnimeDownloadQueue {
         episodeIds.forEach((episodeId) => {
             const handle = this.handles.get(episodeId);
             const episode = this.deps.db.getEpisode(episodeId);
-            if (handle) {
+            const replacement = this.pendingReplacements.get(episodeId);
+            if (replacement !== undefined) {
+                this.pendingReplacements.delete(episodeId);
+                this.restoreReplacement(episodeId, replacement);
+            } else if (handle) {
                 handle.cancel();
             } else if (episode && episode.status !== 'done') {
                 this.removePartial(episode.animeId, episode.number);
@@ -280,6 +330,7 @@ export class AnimeDownloadQueue {
             this.pauseRequested.delete(episodeId);
             this.startsWhileHeld.delete(episodeId);
             this.tries.delete(episodeId);
+            this.replacementDirs.delete(episodeId);
         });
         this.pump();
     }
@@ -290,10 +341,17 @@ export class AnimeDownloadQueue {
 
     async shutdown(timeoutMs: number = ANIME_SHUTDOWN_TIMEOUT_MS): Promise<void> {
         this.closed = true;
+        this.pendingReplacements.forEach((replacement, episodeId) => {
+            this.restoreReplacement(episodeId, replacement);
+        });
+        this.pendingReplacements.clear();
         if (this.held) {
             this.list().forEach((job) => {
                 if (job.status === 'queued' && !this.handles.has(job.episodeId)) {
-                    this.deps.db.markPaused(job.episodeId);
+                    const episode = this.deps.db.getEpisode(job.episodeId);
+                    if (episode !== null && episode.status !== 'done') {
+                        this.deps.db.markPaused(job.episodeId);
+                    }
                 }
             });
         }
@@ -344,6 +402,11 @@ export class AnimeDownloadQueue {
         }
     }
 
+    private hasFreeSlot(): boolean {
+        const limit = this.deps.maxConcurrent ?? CONCURRENT_DOWNLOADS;
+        return !this.closed && !this.held && this.handles.size < limit;
+    }
+
     private canStart(job: AnimeJob): boolean {
         if (job.status !== 'queued' || this.handles.has(job.episodeId)) {
             return false;
@@ -377,18 +440,17 @@ export class AnimeDownloadQueue {
         return episode.filePath === null || this.deps.fileSize(episode.filePath) === null;
     }
 
-    private canReplaceVideo(episode: AnimeEpisodeRecord): boolean {
+    private canQueueReplacement(episode: AnimeEpisodeRecord): boolean {
         if (this.isFileMissing(episode)) {
             return true;
         }
-        if (!episode.noAudio || episode.filePath === null || !this.deps.removeFile) {
-            return false;
-        }
-        try {
-            this.deps.removeFile(episode.filePath);
-            return true;
-        } catch {
-            return false;
+        return episode.noAudio && episode.filePath !== null && this.deps.removeFile !== undefined;
+    }
+
+    private restoreReplacement(episodeId: number, replacement: PendingReplacement): void {
+        this.deps.db.markDone(episodeId, replacement.filePath, replacement.sizeBytes);
+        if (replacement.noAudio) {
+            this.deps.db.markAudioChecked(episodeId, replacement.filePath, false);
         }
     }
 
@@ -422,7 +484,7 @@ export class AnimeDownloadQueue {
         if (this.closed) {
             return;
         }
-        const limit = this.deps.getSettings().maxConcurrent;
+        const limit = this.deps.maxConcurrent ?? CONCURRENT_DOWNLOADS;
         let running = this.handles.size;
         for (const job of this.jobs.values()) {
             if (running >= limit) {
@@ -438,18 +500,37 @@ export class AnimeDownloadQueue {
         const { db } = this.deps;
         const anime = db.getAnime(job.animeId);
         if (!anime) {
+            this.pendingReplacements.delete(job.episodeId);
             this.jobs.delete(job.episodeId);
             return false;
         }
         const settings = this.deps.getSettings();
         const platform = this.deps.platform ?? process.platform;
-        const downloadDir = this.downloadDirectoryOf(anime, job.episode, platform);
-        try {
-            this.deps.ensureDirectory(downloadDir);
-        } catch (error) {
-            this.finishWithError(job, { code: 'UNKNOWN', raw: error instanceof Error ? error.message : String(error) });
-            this.deps.onLibraryEntryChanged(job.animeId);
-            return false;
+        const overrideDir = this.replacementDirs.get(job.episodeId);
+        this.replacementDirs.delete(job.episodeId);
+        const downloadDir = overrideDir ?? this.downloadDirectoryOf(anime, job.episode, platform);
+        const replacement = this.pendingReplacements.get(job.episodeId);
+        if (replacement !== undefined) {
+            this.pendingReplacements.delete(job.episodeId);
+            try {
+                this.deps.ensureDirectory(downloadDir);
+                this.deps.removeFile?.(replacement.filePath);
+            } catch {
+                this.restoreReplacement(job.episodeId, replacement);
+                this.startsWhileHeld.delete(job.episodeId);
+                this.update(job, { status: 'cancelled' });
+                this.jobs.delete(job.episodeId);
+                this.deps.onLibraryEntryChanged(job.animeId);
+                return false;
+            }
+        } else {
+            try {
+                this.deps.ensureDirectory(downloadDir);
+            } catch (error) {
+                this.finishWithError(job, { code: 'UNKNOWN', raw: error instanceof Error ? error.message : String(error) });
+                this.deps.onLibraryEntryChanged(job.animeId);
+                return false;
+            }
         }
         db.markDownloading(job.episodeId);
         this.lastReported.delete(job.episodeId);
@@ -519,11 +600,21 @@ export class AnimeDownloadQueue {
         const downloaded = this.deps.db.getLibraryAnime(animeId)?.episodes.find((episode) => {
             return episode.status === 'done' && episode.filePath !== null && episodeFolderOf(episode.filePath, episode.number, platform) !== null;
         });
-        if (!downloaded?.filePath) {
-            return null;
+        if (downloaded?.filePath) {
+            const folder = animeFolderOf(downloaded.filePath, downloaded.number, platform);
+            if (this.deps.directoryExists(folder)) {
+                return folder;
+            }
         }
-        const folder = animeFolderOf(downloaded.filePath, downloaded.number, platform);
-        return this.deps.directoryExists(folder) ? folder : null;
+        for (const replacement of this.pendingReplacements.values()) {
+            if (replacement.animeId === animeId && episodeFolderOf(replacement.filePath, replacement.episodeNumber, platform) !== null) {
+                const folder = animeFolderOf(replacement.filePath, replacement.episodeNumber, platform);
+                if (this.deps.directoryExists(folder)) {
+                    return folder;
+                }
+            }
+        }
+        return null;
     }
 
     private reportProgress(job: AnimeJob, progress: AniDownloadProgress): void {
@@ -604,7 +695,7 @@ export class AnimeDownloadQueue {
                 this.deps.onLibraryEntryChanged(animeId);
             }
         } catch {
-            // The repair is only a help: when it fails the episode is as it was.
+            return;
         }
     }
 
@@ -619,7 +710,7 @@ export class AnimeDownloadQueue {
                 this.deps.onLibraryEntryChanged(animeId);
             }
         } catch {
-            // The check is only a help: when it fails (ffmpeg is not there, the database was closed with the app) the episode is as it was.
+            return;
         }
     }
 

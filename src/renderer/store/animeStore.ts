@@ -368,7 +368,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     }
                 }),
                 api.onAnimeMigrationProgress((migration) => {
-                    set({ migration });
+                    if (get().migration !== null) {
+                        set({ migration });
+                    }
                 }),
                 api.onAnimeCoverUpdate((update) => {
                     set((state) => {
@@ -650,6 +652,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         migrateFolder: async () => {
+            if (get().migration !== null) {
+                return { ok: false, reason: 'busy' };
+            }
             set({ migration: { done: 0, total: 0 } });
             try {
                 const response = await window.api.migrateAnimeFolder();

@@ -322,12 +322,11 @@ describe('JobCard', () => {
 
     describe('failed downloads', () => {
         it.each([
-            ['an unsupported page', UNSUPPORTED, null],
-            ['an unavailable video', ERROR, null],
-            ['a refused link from a page', FORBIDDEN, 'https://site.test/ep-1'],
-            ['a refused link the user pasted', FORBIDDEN, null]
-        ])('offers no stream search for %s', (_label, error, pageUrl) => {
-            renderCard(makeJob({ status: 'error', error, pageUrl }));
+            ['an unsupported page', UNSUPPORTED],
+            ['an unavailable video', ERROR],
+            ['a refused link', FORBIDDEN]
+        ])('offers no stream search for %s', (_label, error) => {
+            renderCard(makeJob({ status: 'error', error }));
             expect(screen.getByRole('button', { name: 'RETRY' })).toBeInTheDocument();
             expect(screen.queryByRole('button', { name: /FIND/ })).not.toBeInTheDocument();
             expect(screen.queryByRole('region', { name: 'Stream finder' })).not.toBeInTheDocument();

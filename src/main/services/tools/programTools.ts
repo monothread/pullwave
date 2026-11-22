@@ -60,6 +60,7 @@ export interface ProgramToolsDependencies {
     latest?: LatestDependencies;
     run?: RunProgram;
     checkAniCli?: () => AniCliCheck | null;
+    onDiagnostic?: (message: string) => void;
 }
 
 export interface Selected {
@@ -360,8 +361,9 @@ export class ProgramTools {
         if (spec !== null && this.installer.isReady(spec)) {
             try {
                 this.installer.removeOthers(spec);
-            } catch {
-                // It is tried again the next time.
+            } catch (error) {
+                const detail = error instanceof Error ? error.message : String(error);
+                this.deps.onDiagnostic?.(`Could not remove old versions of ${id}: ${detail}`);
             }
         }
     }

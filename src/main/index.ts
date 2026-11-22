@@ -345,6 +345,9 @@ function bootstrap(): BootstrapResult {
         },
         checkAniCli: () => {
             return anime?.checkScript ?? null;
+        },
+        onDiagnostic: (message) => {
+            diagnosticLog?.write(message);
         }
     });
     const resolver = new BinaryResolver(programs);
@@ -474,6 +477,14 @@ function bootstrap(): BootstrapResult {
                     void shell.openExternal(address);
                 }
             });
+        },
+        chooseLibraryFolder: async (startAt) => {
+            if (process.env.PULLWAVE_MANGA_IMPORT_DIR) {
+                return process.env.PULLWAVE_MANGA_IMPORT_DIR;
+            }
+            const options = { defaultPath: startAt, properties: ['openDirectory'] as Array<'openDirectory'> };
+            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+            return result.canceled ? null : (result.filePaths[0] ?? null);
         },
         chooseMigrationFolder: async (startAt) => {
             if (process.env.PULLWAVE_MANGA_MIGRATE_DIR) {
@@ -619,7 +630,9 @@ function bootstrap(): BootstrapResult {
 
     registerAnimeHandlers(ipcMain, anime ? anime.handlers : null);
     registerMangaHandlers(ipcMain, manga ? manga.handlers : null);
-    removeLegacyBinaries(dataDir, [settingsStore.get().ytdlpPath, settingsStore.get().ffmpegPath, process.env.PULLWAVE_ANI_CLI ?? '']);
+    removeLegacyBinaries(dataDir, [settingsStore.get().ytdlpPath, settingsStore.get().ffmpegPath, process.env.PULLWAVE_ANI_CLI ?? ''], (message) => {
+        diagnosticLog?.write(message);
+    });
     registerProgramHandlers(ipcMain, { programs });
     const cutter = new CutService({
         runFfmpeg: () => {

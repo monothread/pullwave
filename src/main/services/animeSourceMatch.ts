@@ -14,16 +14,16 @@ export interface StoredAnimeResult {
     sourceId?: string | null;
 }
 
-export function resolveResult(stored: StoredAnimeResult, results: readonly AnimeSearchResult[]): number | null {
+export function resolveMatchedResult(stored: StoredAnimeResult, results: readonly AnimeSearchResult[]): AnimeSearchResult | null {
     if (results.length === 1) {
-        return (results[0] as AnimeSearchResult).index;
+        return results[0] as AnimeSearchResult;
     }
     if (stored.sourceId !== undefined && stored.sourceId !== null) {
         const byId = results.find((result) => {
             return result.sourceId === stored.sourceId;
         });
         if (byId !== undefined) {
-            return byId.index;
+            return byId;
         }
     }
     const wanted = comparableTitle(stored.title);
@@ -37,7 +37,11 @@ export function resolveResult(stored: StoredAnimeResult, results: readonly Anime
         return result.index === stored.searchIndex;
     });
     if (kept !== undefined) {
-        return kept.index;
+        return kept;
     }
-    return same.length === 1 ? (same[0] as AnimeSearchResult).index : null;
+    return same.length === 1 ? (same[0] as AnimeSearchResult) : null;
+}
+
+export function resolveResult(stored: StoredAnimeResult, results: readonly AnimeSearchResult[]): number | null {
+    return resolveMatchedResult(stored, results)?.index ?? null;
 }

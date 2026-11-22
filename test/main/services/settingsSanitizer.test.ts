@@ -32,7 +32,6 @@ describe('sanitizeSettings', () => {
             autoSubtitles: true,
             embedSubtitles: true,
             rateLimit: '2M',
-            maxConcurrent: 3,
             ytdlpPath: '/opt/yt-dlp',
             ffmpegPath: '/opt/ffmpeg',
             jsRuntime: 'node:/usr/bin/node',
@@ -376,8 +375,7 @@ describe('sanitizeSettings', () => {
             autoSubtitles: 'yes',
             deletePartialsOnFailure: 'no',
             downloadDir: 5,
-            maxTitleLength: '80',
-            maxConcurrent: NaN
+            maxTitleLength: '80'
         });
         expect(result.useBrowserCookies).toBe(false);
         expect(result.checkUpdatesOnStart).toBe(true);
@@ -391,7 +389,6 @@ describe('sanitizeSettings', () => {
         expect(result.cookiesBrowserDir).toBe('');
         expect(result.downloadDir).toBe('');
         expect(result.maxTitleLength).toBe(80);
-        expect(result.maxConcurrent).toBe(3);
     });
 
     it('checks the end of live streams for 10 seconds by default', () => {
@@ -430,13 +427,13 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ maxTitleLength: 80.6 }).maxTitleLength).toBe(81);
     });
 
-    it('always runs three downloads at a time, whatever the saved value is', () => {
-        expect(DEFAULT_SETTINGS.maxConcurrent).toBe(3);
+    it('drops the maxConcurrent field saved by an older version, touching nothing else', () => {
+        expect(Object.keys(DEFAULT_SETTINGS)).not.toContain('maxConcurrent');
         [0, 1, 2, 3, 5, 50, -4, 2.5, NaN, '3', null, undefined].forEach((value) => {
-            expect(sanitizeSettings({ maxConcurrent: value }).maxConcurrent).toBe(3);
+            const sanitized = sanitizeSettings({ maxConcurrent: value });
+            expect(sanitized).toEqual(DEFAULT_SETTINGS);
+            expect(Object.keys(sanitized)).not.toContain('maxConcurrent');
         });
-        expect(sanitizeSettings({}).maxConcurrent).toBe(3);
-        expect(sanitizeSettings(null).maxConcurrent).toBe(3);
     });
 
     it('trims string values', () => {

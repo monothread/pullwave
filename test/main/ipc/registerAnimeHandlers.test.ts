@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeAudioCheckResponse, type AnimeRepairResponse, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleJobs, type SubtitleTranslatableResponse, type SubtitleTranslateResponse } from '@shared/anime';
+import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeAudioCheckResponse, type AnimeRepairResponse, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleDeleteResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleJobs, type SubtitleTranslatableResponse, type SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
 import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
@@ -90,6 +90,7 @@ const ANIME_CHANNELS = [
     IPC.animeSubtitleJobs,
     IPC.animeSubtitleGenerateEstimate,
     IPC.animeSubtitleImport,
+    IPC.animeSubtitleDelete,
     IPC.animeSubtitleTranslate,
     IPC.animeSubtitleTranslateCancel,
     IPC.animeSubtitleTranslateEstimate,
@@ -202,6 +203,9 @@ function setup(available = true) {
         }),
         import: vi.fn(async (): Promise<AnimeSubtitleImportResponse> => {
             return { ok: false, reason: 'cancelled' };
+        }),
+        deleteTranslated: vi.fn((): AnimeSubtitleDeleteResponse => {
+            return { ok: true, tracks: [] };
         }),
         check: vi.fn(async (): Promise<AnimeSubtitleCheckResponse> => {
             return { ok: true, added: [], tracks: [] };
@@ -1376,7 +1380,7 @@ describe('registerAnimeHandlers', () => {
             expect(db.getEpisode(episode.id)).toBeNull();
             expect(removeFiles).toHaveBeenCalledWith([
                 '/lib/Naruto/Naruto Episode 1.mp4',
-                '/lib/Naruto/Naruto Episode 1.vtt',
+                join('/lib/Naruto', 'Naruto Episode 1.vtt'),
                 join('/lib/Naruto', 'pullwave.json')
             ]);
             expect(removeFolders).not.toHaveBeenCalled();
@@ -1423,7 +1427,7 @@ describe('registerAnimeHandlers', () => {
 
             expect(removeFiles).toHaveBeenCalledWith([
                 '/lib/Naruto/Episode 1/Naruto Episode 1.mp4',
-                '/lib/Naruto/Episode 1/Naruto Episode 1.vtt',
+                join('/lib/Naruto/Episode 1', 'Naruto Episode 1.vtt'),
                 join('/lib/Naruto/Episode 1', 'pullwave.json')
             ]);
             expect(removeEmptyFolders).toHaveBeenCalledTimes(1);
@@ -2149,6 +2153,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeRepairEpisodes, [1])).toEqual({ ok: false, reason: 'unsupported' });
         expect(ipc.call(IPC.animeSubtitles, 1)).toEqual([]);
         expect(ipc.call(IPC.animeSubtitleImport, 1)).toEqual({ ok: false, reason: 'missing' });
+        expect(ipc.call(IPC.animeSubtitleDelete, 1, 'translated-Spanish')).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitlesCheck, 1)).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleTranslate, { episodeId: 1, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleTranslateEstimate, { episodeId: 1, trackId: null })).toEqual({ ok: false, reason: 'missing' });
@@ -2311,6 +2316,30 @@ describe('the history of the anime section', () => {
         call(IPC.animeHistoryRecord, opened);
         call(IPC.animeHistoryClear);
         expect(db.listHistory()).toEqual([]);
+    });
+});
+
+describe('deleting a translated subtitle', () => {
+    it('delegates valid requests, refreshes metadata only on success and rejects invalid episodeId or trackId', () => {
+        const { call, subtitles, refreshMetadata } = setup();
+        subtitles.deleteTranslated.mockReturnValueOnce({ ok: true, tracks: [{ id: 'subtitle-English', label: 'English', kind: 'source' }] });
+
+        expect(call(IPC.animeSubtitleDelete, 1, 'translated-Spanish')).toEqual({
+            ok: true,
+            tracks: [{ id: 'subtitle-English', label: 'English', kind: 'source' }]
+        });
+        expect(subtitles.deleteTranslated).toHaveBeenCalledWith(1, 'translated-Spanish');
+        expect(refreshMetadata).toHaveBeenCalledTimes(1);
+        expect(refreshMetadata).toHaveBeenCalledWith(1);
+
+        subtitles.deleteTranslated.mockReturnValueOnce({ ok: false, reason: 'not-found' });
+        expect(call(IPC.animeSubtitleDelete, 1, 'translated-French')).toEqual({ ok: false, reason: 'not-found' });
+        expect(refreshMetadata).toHaveBeenCalledTimes(1);
+
+        expect(call(IPC.animeSubtitleDelete, 0, 'translated-Spanish')).toEqual({ ok: false, reason: 'missing' });
+        expect(call(IPC.animeSubtitleDelete, 1, '')).toEqual({ ok: false, reason: 'missing' });
+        expect(call(IPC.animeSubtitleDelete, 1, 123)).toEqual({ ok: false, reason: 'missing' });
+        expect(subtitles.deleteTranslated).toHaveBeenCalledTimes(2);
     });
 });
 

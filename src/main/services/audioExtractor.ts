@@ -25,6 +25,9 @@ const AUDIO_STREAM = /Stream #\d+:\d+.*: Audio:/;
 
 export function createFfmpegRunner(binary: string, openLog: () => LogWriter = openFfmpegLog): FfmpegRunner {
     return (args, signal) => {
+        if (signal?.aborted === true) {
+            return Promise.resolve({ code: null, stderr: '' });
+        }
         return new Promise((resolve) => {
             const log = openLog();
             log.command(binary, args);

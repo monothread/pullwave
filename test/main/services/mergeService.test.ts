@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { IPC } from '@shared/constants';
 import type { MergeRun } from '@shared/merge';
 import { registerMergeHandlers } from '@main/ipc/registerMergeHandlers';
@@ -186,7 +187,7 @@ describe('MergeService', () => {
             status: 'done',
             percent: 100,
             method: 'copy',
-            outputPath: '/downloads/a - merged.mp4'
+            outputPath: join('/downloads', 'a - merged.mp4')
         });
     });
 
@@ -224,7 +225,7 @@ describe('MergeService', () => {
             method: 'reencode',
             percent: 100,
             outputDirectory: '/videos',
-            outputPath: '/videos/Combined.mp4'
+            outputPath: join('/videos', 'Combined.mp4')
         });
     });
 
@@ -248,7 +249,7 @@ describe('MergeService', () => {
             method: 'reencode',
             inputCount: 3,
             totalDurationSeconds: 40,
-            outputPath: '/custom/a - merged.mkv'
+            outputPath: join('/custom', 'a - merged.mkv')
         });
     });
 
@@ -297,7 +298,7 @@ describe('MergeService', () => {
         expect(resolveRun).not.toBeNull();
         expect(service.hasActiveRun()).toBe(false);
         expect(runs.at(-1)).toMatchObject({ status: 'cancelled', percent: 0, outputPath: null });
-        expect(removed).toContain('/downloads/a - merged.mp4');
+        expect(removed).toContain(join('/downloads', 'a - merged.mp4'));
 
         service.clear();
         expect(service.current()).toBeNull();
@@ -306,7 +307,7 @@ describe('MergeService', () => {
     it('sets run.outputName to the actual collision-free filename allocated on disk', async () => {
         const { service, runs } = makeService({
             listDirectory: async () => {
-                return ['/downloads/a - merged.mp4'];
+                return [join('/downloads', 'a - merged.mp4')];
             }
         });
 
@@ -323,7 +324,7 @@ describe('MergeService', () => {
         expect(runs.at(-1)).toMatchObject({
             status: 'done',
             outputName: 'a - merged (2).mp4',
-            outputPath: '/downloads/a - merged (2).mp4'
+            outputPath: join('/downloads', 'a - merged (2).mp4')
         });
     });
 

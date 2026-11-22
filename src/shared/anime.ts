@@ -326,6 +326,10 @@ export type AnimeSubtitleImportResponse =
     | { ok: true; tracks: AnimeSubtitleTrack[]; imported: AnimeSubtitleTrack }
     | { ok: false; reason: 'cancelled' | 'unsupported' | 'too-large' | 'unreadable' | 'missing' };
 
+export type AnimeSubtitleDeleteResponse =
+    | { ok: true; tracks: AnimeSubtitleTrack[] }
+    | { ok: false; reason: 'missing' | 'not-found' | 'unreadable' };
+
 export type AnimeSubtitleCheckResponse =
     | { ok: true; added: string[]; tracks: AnimeSubtitleTrack[] }
     | { ok: false; reason: 'missing' }

@@ -43,7 +43,7 @@ import { checkSubtitles } from './services/subtitleCheck';
 import { canBeTranslated, estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from './services/subtitleTranslation';
 import { createTranslatedBatches } from './services/subtitleTranslator';
 import { SubtitleTranslationQueue } from './services/subtitleTranslationQueue';
-import { defaultSubtitleFileSystem, importSubtitle, listSubtitleTracks, resolveSubtitlePath, type SubtitleFileSystem } from './services/subtitleFiles';
+import { defaultSubtitleFileSystem, deleteTranslatedSubtitle, importSubtitle, listSubtitleTracks, resolveSubtitlePath, type SubtitleFileSystem } from './services/subtitleFiles';
 
 export const REMOVE_RETRY_MS = 500;
 
@@ -424,6 +424,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         episodes: (query, index) => {
             return service.episodes(query, index);
         },
+        sourceProvider: () => {
+            return service.provider;
+        },
         isEnabled: () => {
             return options.getSettings().animeCheckNewEpisodes;
         },
@@ -676,6 +679,10 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                         }),
                         files: options.subtitleFiles
                     });
+                },
+                deleteTranslated: (episodeId, trackId) => {
+                    const filePath = downloadedFile(episodeId);
+                    return filePath === null ? { ok: false, reason: 'missing' } : deleteTranslatedSubtitle(filePath, trackId, options.subtitleFiles);
                 },
                 check: async (episodeId) => {
                     const episode = db.getEpisode(episodeId);

@@ -36,6 +36,7 @@ export interface MangaQueueDependencies {
     onJobUpdate: (job: MangaJob) => void;
     onLibraryChanged: () => void;
     onLibraryEntryChanged: (mangaId: number) => void;
+    onChapterDownloaded?: (mangaId: number) => void;
     onHeldChange: (held: boolean) => void;
     limits?: MangaDownloadLimits;
     platform?: NodeJS.Platform;
@@ -638,6 +639,7 @@ export class MangaDownloadQueue {
         }
         this.outputPaths.delete(job.chapterId);
         this.tries.delete(job.chapterId);
+        this.deps.onChapterDownloaded?.(job.mangaId);
         this.update(job, { status: 'done', percent: 100, pagesDone: pageCount, pageCount, missingPages: missingPages.length });
         this.jobs.delete(job.chapterId);
     }

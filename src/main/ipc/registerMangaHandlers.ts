@@ -1,6 +1,7 @@
+import { dirname } from 'node:path';
 import { IPC } from '@shared/constants';
 import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
-import type { ComponentHealth, LibraryManga, MangaChapter, MangaCheckResponse, MangaCheckState, MangaUpdateEntry, ReadingEntry, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaRetitleResponse, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
+import type { ComponentHealth, LibraryManga, MangaChapter, MangaCheckResponse, MangaCheckState, MangaUpdateEntry, ReadingEntry, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaImportResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaRetitleResponse, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
 import type { MangaCovers } from '../services/manga/mangaCovers';
 import type { MangaIcons } from '../services/manga/mangaIcons';
@@ -34,6 +35,9 @@ export interface MangaHandlerDependencies {
     openFolder: (path: string) => void;
     openSite: (url: string) => void;
     migrateFolder: () => Promise<MangaMigrationResponse>;
+    importLibrary?: () => Promise<MangaImportResponse>;
+    refreshMetadata?: (mangaId: number) => void;
+    cleanupStaleMetadata?: (folders: readonly string[]) => void;
     renameFolder: (manga: LibraryManga, title: string) => Promise<MangaFolderRenameOutcome>;
     onLibraryChanged: () => void;
 }
@@ -69,10 +73,13 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.mangaCheckState, (): MangaCheckState => {
         return IDLE_MANGA_CHECK_STATE;
     });
-    [IPC.mangaClearUpdates, IPC.mangaRecordReading, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
+    [IPC.mangaClearUpdates, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
         ipcMain.handle(channel, () => {
             return undefined;
         });
+    });
+    ipcMain.handle(IPC.mangaRecordReading, (): ReadingEntry | null => {
+        return null;
     });
     [IPC.mangaHelperInstall, IPC.mangaHelperRemove, IPC.mangaOpenSite].forEach((channel) => {
         ipcMain.handle(channel, () => {
@@ -81,6 +88,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.mangaMigrateFolder, (): MangaMigrationResponse => {
         return { ok: false, reason: 'failed' };
+    });
+    ipcMain.handle(IPC.mangaImportLibrary, (): MangaImportResponse => {
+        return { ok: false, reason: 'cancelled' };
     });
     [IPC.mangaSetSeries, IPC.mangaRenameSeries].forEach((channel) => {
         ipcMain.handle(channel, (): MangaSeriesResponse => {
@@ -166,7 +176,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         registerUnsupported(ipcMain);
         return;
     }
-    const { service, queue, db, reader, repair, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters, checkState, renameFolder } = deps;
+    const { service, queue, db, reader, repair, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters, checkState, renameFolder, refreshMetadata } = deps;
     let migrating = false;
 
     function present(manga: LibraryManga): LibraryManga {
@@ -230,6 +240,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             setMigrating(false);
         }
         onLibraryChanged();
+        refreshMetadata?.(mangaId);
         const renamed = db.getLibraryManga(mangaId);
         return renamed === null ? { ok: false, reason: 'not-found' } : { ok: true, manga: present(renamed) };
     }
@@ -443,11 +454,17 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaRemoveDownload, (_event, chapterId) => {
         const id = asId(chapterId);
-        if (id === null || migrating || !hasChapterFile(db.getChapter(id)?.status ?? 'idle')) {
+        const chapter = id === null ? null : db.getChapter(id);
+        if (id === null || chapter === null || migrating || !hasChapterFile(chapter.status)) {
             return;
         }
         queue.forget([id]);
-        removeFilesOf([db.removeDownload(id)]);
+        const removed = db.removeDownload(id);
+        removeFilesOf([removed]);
+        deps.refreshMetadata?.(chapter.mangaId);
+        if (removed !== null) {
+            deps.cleanupStaleMetadata?.([dirname(removed)]);
+        }
         deps.onLibraryChanged();
     });
     ipcMain.handle(IPC.mangaRemoveManga, (_event, mangaId) => {
@@ -460,7 +477,17 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
                 return chapter.id;
             })
         );
-        removeFilesOf(db.removeManga(id));
+        const removed = db.removeManga(id);
+        removeFilesOf(removed);
+        deps.cleanupStaleMetadata?.(
+            removed
+                .filter((path): path is string => {
+                    return path !== null;
+                })
+                .map((path) => {
+                    return dirname(path);
+                })
+        );
         covers.remove(id);
         deps.onLibraryChanged();
     });
@@ -479,6 +506,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         if (!db.setSeries(checked.mangaId, checked.series, checked.season, checked.seasonName)) {
             return { ok: false, reason: 'season-taken', suggested: db.firstFreeSeason(checked.series ?? '', [checked.mangaId]) };
         }
+        deps.refreshMetadata?.(checked.mangaId);
         deps.onLibraryChanged();
         return { ok: true };
     });
@@ -492,6 +520,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         if (!outcome.ok) {
             return { ok: false, reason: 'season-taken', manga: outcome.manga, season: outcome.season, suggested: outcome.suggested };
         }
+        ids.forEach((id) => {
+            deps.refreshMetadata?.(id);
+        });
         deps.onLibraryChanged();
         return { ok: true };
     });
@@ -556,7 +587,11 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         }
         deps.onLibraryChanged();
         refreshCover(checked.mangaId);
+        const titleChanged = outcome.previousTitle !== checked.target.manga.title;
         await retitle(checked.mangaId, checked.target.manga.title);
+        if (!titleChanged) {
+            deps.refreshMetadata?.(checked.mangaId);
+        }
         const manga = db.getLibraryManga(checked.mangaId);
         return manga === null
             ? { ok: false, reason: 'not-found' }
@@ -597,17 +632,20 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     ipcMain.handle(IPC.mangaCheckState, (): MangaCheckState => {
         return checkState();
     });
-    ipcMain.handle(IPC.mangaRecordReading, (_event, record) => {
+    function presentReading(entry: ReadingEntry): ReadingEntry {
+        const kept = entry.libraryMangaId === null ? null : covers.urlOf(entry.libraryMangaId);
+        return { ...entry, thumbnailUrl: kept ?? fromStoredAddress(entry.thumbnailUrl, service.baseUrl) };
+    }
+
+    ipcMain.handle(IPC.mangaRecordReading, (_event, record): ReadingEntry | null => {
         const checked = asReadingRecord(record);
-        if (checked !== null) {
-            db.recordReading(store(checked));
+        if (checked === null) {
+            return null;
         }
+        return presentReading(db.recordReading(store(checked)));
     });
     ipcMain.handle(IPC.mangaReadingHistory, (): ReadingEntry[] => {
-        return db.readingHistory().map((entry) => {
-            const kept = entry.libraryMangaId === null ? null : covers.urlOf(entry.libraryMangaId);
-            return { ...entry, thumbnailUrl: kept ?? fromStoredAddress(entry.thumbnailUrl, service.baseUrl) };
-        });
+        return db.readingHistory().map(presentReading);
     });
     ipcMain.handle(IPC.mangaRemoveReading, (_event, id) => {
         const checked = asId(id);
@@ -632,6 +670,24 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         try {
             const result = await deps.migrateFolder();
             deps.onLibraryChanged();
+            return result;
+        } finally {
+            setMigrating(false);
+        }
+    });
+    ipcMain.handle(IPC.mangaImportLibrary, async (): Promise<MangaImportResponse> => {
+        if (migrating) {
+            return { ok: false, reason: 'busy' };
+        }
+        if (deps.importLibrary === undefined) {
+            return { ok: false, reason: 'cancelled' };
+        }
+        setMigrating(true);
+        try {
+            const result = await deps.importLibrary();
+            if (result.ok) {
+                deps.onLibraryChanged();
+            }
             return result;
         } finally {
             setMigrating(false);

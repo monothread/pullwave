@@ -52,7 +52,7 @@ function setup({ failing = new Set<string>(), ...overrides }: Partial<MangaRunti
     const fake = fakeSuwayomi(failing);
     const settings: Settings = { ...DEFAULT_SETTINGS, ...overrides.settings };
     const runtime = createMangaRuntime({
-        platform: 'linux',
+        platform: process.platform === 'win32' ? 'win32' : 'linux',
         arch: 'x64',
         dataDir: join(dir, 'userData'),
         defaultDownloadDir: join(dir, 'Downloads'),
@@ -581,7 +581,7 @@ describe('createMangaRuntime files', () => {
     });
 
     it('uses the folder of the settings for a manga with nothing downloaded', () => {
-        const { runtime } = setup({ settings: { mangaDirectory: '/mnt/manga' } });
+        const { runtime } = setup({ platform: 'linux', settings: { mangaDirectory: '/mnt/manga' } });
         const manga = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
         expect(runtime!.handlers.folderOf(manga.id)).toBe('/mnt/manga/One Piece');
     });
@@ -1425,5 +1425,26 @@ describe('forgetSelectedServer', () => {
         });
         expect(runtime).not.toBeNull();
         runtime?.db.close();
+    });
+
+    it('cleans up stale pullwave.json when no downloaded chapters remain in a folder even if extra files exist', () => {
+        const base = makeTempDir();
+        const { runtime } = setup({ settings: { mangaDirectory: base } });
+        const folder = join(base, 'One Piece');
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, 'pullwave.json'), '{"version":1}');
+        writeFileSync(join(folder, 'notes.txt'), 'keep');
+
+        runtime!.handlers.cleanupStaleMetadata?.([folder]);
+        expect(existsSync(join(folder, 'pullwave.json'))).toBe(false);
+        expect(existsSync(join(folder, 'notes.txt'))).toBe(true);
+
+        const manga = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        const chapter = runtime!.db.ensureChapter(manga.id, { remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 });
+        runtime!.db.markDone(chapter.id, join(folder, 'Chapter 1.cbz'), 10, 1);
+        writeFileSync(join(folder, 'pullwave.json'), '{"version":1}');
+
+        runtime!.handlers.cleanupStaleMetadata?.([folder]);
+        expect(existsSync(join(folder, 'pullwave.json'))).toBe(true);
     });
 });

@@ -331,6 +331,18 @@ describe('createFfmpegRunner', () => {
         }, 100);
         expect((await pending).code).toBeNull();
     });
+
+    it('returns immediately without spawning when the signal is already aborted', async () => {
+        const openLog = vi.fn();
+        const run = createFfmpegRunner(process.execPath, openLog);
+        const marker = join(makeTempDir(), 'spawned.txt');
+        const controller = new AbortController();
+        controller.abort();
+        const result = await run(['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`], controller.signal);
+        expect(result).toEqual({ code: null, stderr: '' });
+        expect(openLog).not.toHaveBeenCalled();
+        expect(existsSync(marker)).toBe(false);
+    });
 });
 
 describe('defaultAudioFiles', () => {

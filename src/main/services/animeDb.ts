@@ -541,6 +541,30 @@ export class AnimeDb {
         this.run('UPDATE anime SET search_index = ? WHERE id = ?', searchIndex, animeId);
     }
 
+    updateSourceIdentity(animeId: number, sourceId: string, sourceProvider: string | null): void {
+        const current = this.one('SELECT source_id, source_provider FROM anime WHERE id = ?', animeId);
+        if (current === null) {
+            return;
+        }
+        const currentId = nullableText(current, 'source_id');
+        const currentProvider = nullableText(current, 'source_provider');
+        const nextProvider = sourceProvider ?? currentProvider;
+        if (currentId === sourceId && currentProvider === nextProvider) {
+            return;
+        }
+        const conflict = this.one(
+            'SELECT id FROM anime WHERE id != ? AND source_id = ? AND (source_provider IS NULL OR ? IS NULL OR source_provider = ?) LIMIT 1',
+            animeId,
+            sourceId,
+            nextProvider,
+            nextProvider
+        );
+        if (conflict !== null) {
+            return;
+        }
+        this.run('UPDATE anime SET source_id = ?, source_provider = ? WHERE id = ?', sourceId, nextProvider, animeId);
+    }
+
     updates(limit = 200): AnimeUpdateEntry[] {
         return this.all(
             `SELECT u.id AS id, u.anime_id AS anime_id, u.episode_id AS episode_id, u.found_at AS found_at, u.origin AS origin,

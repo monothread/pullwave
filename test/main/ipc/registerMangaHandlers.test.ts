@@ -77,6 +77,7 @@ const MANGA_CHANNELS = [
     IPC.mangaResumeAll,
     IPC.mangaResumeMangas,
     IPC.mangaCancelMangas,
+    IPC.mangaImportLibrary,
     IPC.mangaRepairChapter,
     IPC.mangaRetry,
     IPC.mangaSourcePreferenceSet,
@@ -115,7 +116,7 @@ const REQUEST = {
     chapters: [chapter(1), chapter(2)]
 };
 
-function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse>; renameFolder?: (manga: LibraryManga, title: string) => Promise<MangaFolderRenameOutcome>; realRepair?: (db: MangaDb) => MangaHandlerDependencies['repair']; coverFetch?: (url: string) => Promise<Response>; checkResponse?: MangaCheckResponse; checkState?: MangaCheckState } = {}) {
+function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse>; importLibrary?: MangaHandlerDependencies['importLibrary']; renameFolder?: (manga: LibraryManga, title: string) => Promise<MangaFolderRenameOutcome>; realRepair?: (db: MangaDb) => MangaHandlerDependencies['repair']; coverFetch?: (url: string) => Promise<Response>; checkResponse?: MangaCheckResponse; checkState?: MangaCheckState } = {}) {
     const db = new MangaDb(':memory:', () => {
         return 1000;
     });
@@ -294,6 +295,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         migrateFolder: () => {
             return options.migrate === undefined ? Promise.resolve<MangaMigrationResponse>({ ok: true, chapters: 2, files: 2, destination: '/new' }) : options.migrate();
         },
+        importLibrary: options.importLibrary,
         renameFolder: (manga, title) => {
             folderRenames.push({ mangaId: manga.id, from: manga.title, to: title });
             return options.renameFolder === undefined ? Promise.resolve<MangaFolderRenameOutcome>({ ok: true }) : options.renameFolder(manga, title);
@@ -336,9 +338,11 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaReadingHistory)).toEqual([]);
         expect(ipc.call(IPC.mangaCheckNew)).toEqual(unsupported);
         expect(ipc.call(IPC.mangaCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
-        [IPC.mangaClearUpdates, IPC.mangaRecordReading, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
+        [IPC.mangaClearUpdates, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
             expect(ipc.call(channel)).toBeUndefined();
         });
+        expect(ipc.call(IPC.mangaRecordReading)).toBeNull();
+        expect(ipc.call(IPC.mangaImportLibrary)).toEqual({ ok: false, reason: 'cancelled' });
         expect(ipc.call(IPC.mangaSetSeries)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaRenameSeries)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaGroups)).toEqual([]);
@@ -1825,5 +1829,66 @@ describe('the icons of the sources', () => {
         context.service.sources.mockResolvedValue({ ok: false as const, error: { code: 'SERVER_UNAVAILABLE' as const, message: 'down' } });
         await expect(context.call(IPC.mangaSources)).resolves.toEqual({ ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'down' } });
         expect(context.presented).toEqual([]);
+    });
+});
+
+describe('importing a manga library', () => {
+    it('delegates to importLibrary and notifies library changed when successful', async () => {
+        const importLibrary = vi.fn(async () => {
+            return { ok: true as const, added: 3, relinked: 1, skipped: 2, ignored: 0 };
+        });
+        const context = setup({ importLibrary });
+
+        expect(await context.call(IPC.mangaImportLibrary)).toEqual({ ok: true, added: 3, relinked: 1, skipped: 2, ignored: 0 });
+        expect(importLibrary).toHaveBeenCalledTimes(1);
+        expect(context.libraryChanges.count).toBe(1);
+    });
+
+    it('returns busy while a folder migration is in progress', async () => {
+        let release: () => void = () => {
+            return undefined;
+        };
+        const importLibrary = vi.fn(async () => {
+            return { ok: true as const, added: 1, relinked: 0, skipped: 0, ignored: 0 };
+        });
+        const context = setup({
+            migrate: () => {
+                return new Promise((resolve) => {
+                    release = () => {
+                        resolve({ ok: false, reason: 'cancelled' });
+                    };
+                });
+            },
+            importLibrary
+        });
+
+        const moving = context.call(IPC.mangaMigrateFolder) as Promise<unknown>;
+        expect(await context.call(IPC.mangaImportLibrary)).toEqual({ ok: false, reason: 'busy' });
+        expect(importLibrary).not.toHaveBeenCalled();
+        release();
+        await moving;
+    });
+
+    it('returns the presented ReadingEntry from mangaRecordReading', () => {
+        const context = setup();
+        const saved = context.call(IPC.mangaRecordReading, {
+            sourceId: '123',
+            mangaRemoteId: 7,
+            title: 'One Piece',
+            thumbnailUrl: `${BASE}/api/v1/manga/7/thumbnail`,
+            chapterRemoteId: 1,
+            chapterName: 'Chapter 1',
+            chapterNumber: 1,
+            page: 3,
+            pageCount: 20
+        }) as ReadingEntry | null;
+        expect(saved).toMatchObject({
+            sourceId: '123',
+            mangaRemoteId: 7,
+            title: 'One Piece',
+            thumbnailUrl: `${BASE}/api/v1/manga/7/thumbnail`,
+            page: 3,
+            pageCount: 20
+        });
     });
 });

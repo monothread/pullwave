@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslatableResponse, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeSubtitleDeleteResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslatableResponse, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { ConvertChooseResponse, ConvertProbeResponse, ConvertRun, ConvertStartResponse } from '@shared/convert';
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type {
@@ -417,7 +417,9 @@ export function createMockApi(): MockApiHandle {
         checkState: vi.fn(async () => {
             return { running: false, origin: null, done: 0, total: 0, current: null } as MangaCheckState;
         }),
-        recordReading: vi.fn(async () => {return undefined}),
+        recordReading: vi.fn(async () => {
+            return null;
+        }),
         readingHistory: vi.fn(async () => {
             return [];
         }),
@@ -463,6 +465,9 @@ export function createMockApi(): MockApiHandle {
             return { ok: true, value: [] };
         }),
         migrateFolder: vi.fn(async () => {
+            return { ok: false, reason: 'cancelled' };
+        }),
+        importLibrary: vi.fn(async () => {
             return { ok: false, reason: 'cancelled' };
         }),
         onMigrationProgress: vi.fn((listener: (progress: MangaMigrationProgress) => void) => {
@@ -699,6 +704,9 @@ export function createMockApi(): MockApiHandle {
         }),
         importAnimeSubtitle: vi.fn(async (): Promise<AnimeSubtitleImportResponse> => {
             return { ok: false, reason: 'cancelled' };
+        }),
+        deleteAnimeSubtitle: vi.fn(async (): Promise<AnimeSubtitleDeleteResponse> => {
+            return { ok: true, tracks: [] };
         }),
         translateAnimeSubtitle: vi.fn(async (): Promise<SubtitleTranslateResponse> => {
             return { ok: false, reason: 'missing' };
@@ -1001,7 +1009,6 @@ export function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
         filePath: null,
         error: null,
         createdAt: 1,
-        pageUrl: null,
         live: false,
         elapsedSeconds: 0,
         downloadedBytes: 0,

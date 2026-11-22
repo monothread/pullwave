@@ -718,6 +718,19 @@ describe('AnimeDb importing what was found on the disk', () => {
         expect(db.list()).toHaveLength(1);
     });
 
+    it('updates source identity when free and ignores updates that conflict with another anime', () => {
+        const db = makeDb();
+        const first = db.upsertAnime({ ...NARUTO, sourceId: 'old-1', sourceProvider: 'allanime' });
+        const second = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 1, sourceId: 'bleach-2', sourceProvider: 'allanime' });
+
+        db.updateSourceIdentity(first.id, 'new-1', 'allanime');
+        expect(db.getAnime(first.id)?.sourceId).toBe('new-1');
+
+        db.updateSourceIdentity(first.id, 'bleach-2', 'allanime');
+        expect(db.getAnime(first.id)?.sourceId).toBe('new-1');
+        expect(db.getAnime(second.id)?.sourceId).toBe('bleach-2');
+    });
+
     it('fills in the search data that was not known', () => {
         const db = makeDb();
         db.importAnime({ title: 'Naruto', query: 'Naruto', searchIndex: 0 });
@@ -2990,5 +3003,26 @@ describe('AnimeDb with a dubbed anime kept by an earlier version of the app', ()
         expect(db.removeEpisode(twin.id)).toBeNull();
         expect(db.removeEpisode(legacy.id)).toBe('/lib/Naruto Episode 1.mp4');
         db.close();
+    });
+
+    it('preserves existing sourceProvider when updateSourceIdentity is called with null and avoids conflicts', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        const db = new AnimeDb(path, () => {
+            return NOW;
+        });
+        const first = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: 'old-id', sourceProvider: 'provider-a' });
+        const second = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 2, sourceId: 'taken-id', sourceProvider: 'provider-a' });
+
+        db.updateSourceIdentity(first.id, 'new-id', null);
+        db.updateSourceIdentity(first.id, 'taken-id', 'provider-a');
+        db.close();
+
+        const raw = new DatabaseSync(path, { readOnly: true });
+        const rows = raw.prepare('SELECT id, source_id, source_provider FROM anime ORDER BY id').all();
+        raw.close();
+        expect(rows).toEqual([
+            { id: first.id, source_id: 'new-id', source_provider: 'provider-a' },
+            { id: second.id, source_id: 'taken-id', source_provider: 'provider-a' }
+        ]);
     });
 });

@@ -38,16 +38,16 @@ afterEach(() => {
 
 describe('subtitlePathFor', () => {
     it('swaps the extension for .vtt', () => {
-        expect(subtitlePathFor('/lib/Naruto/Naruto Episode 1.mp4')).toBe('/lib/Naruto/Naruto Episode 1.vtt');
-        expect(subtitlePathFor('/lib/a.mkv')).toBe('/lib/a.vtt');
+        expect(subtitlePathFor(join('/lib', 'Naruto', 'Naruto Episode 1.mp4'))).toBe(join('/lib', 'Naruto', 'Naruto Episode 1.vtt'));
+        expect(subtitlePathFor(join('/lib', 'a.mkv'))).toBe(join('/lib', 'a.vtt'));
     });
 
     it('only changes the last extension', () => {
-        expect(subtitlePathFor('/lib/Mr. Robot Episode 1.mp4')).toBe('/lib/Mr. Robot Episode 1.vtt');
+        expect(subtitlePathFor(join('/lib', 'Mr. Robot Episode 1.mp4'))).toBe(join('/lib', 'Mr. Robot Episode 1.vtt'));
     });
 
     it('adds the extension when the file has none', () => {
-        expect(subtitlePathFor('/lib/episode')).toBe('/lib/episode.vtt');
+        expect(subtitlePathFor(join('/lib', 'episode'))).toBe(join('/lib', 'episode.vtt'));
     });
 });
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { CONCURRENT_DOWNLOADS } from '@shared/constants';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
 import { isValidHttpUrl } from '@shared/url';
 import { statSync } from 'node:fs';
@@ -37,6 +38,7 @@ export interface QueueDependencies {
     onHistoryChanged: () => void;
     generateId?: () => string;
     now?: () => number;
+    maxConcurrent?: number;
 }
 
 export const LIVE_TICK_MS = 1000;
@@ -113,16 +115,23 @@ export class QueueManager {
 
     private restorePaused(): void {
         (this.deps.pausedStorage?.load() ?? []).forEach((paused) => {
-            if (this.find(paused.job.id) !== undefined) {
+            const trimmedUrl = paused.job.url.trim();
+            if (this.find(paused.job.id) !== undefined || this.hasActiveUrl(trimmedUrl)) {
                 return;
             }
-            const job = { ...paused.job };
+            const job = { ...paused.job, url: trimmedUrl };
             const settings = this.deps.getSettings();
             const directory = paused.extras.downloadDir ?? (settings.downloadDir.length > 0 ? settings.downloadDir : this.deps.defaultDownloadDir);
             this.jobs.push(job);
-            this.extras.set(job.id, { ...paused.extras, ...(job.pageUrl !== null ? { pageUrl: job.pageUrl } : {}) });
+            this.extras.set(job.id, { ...paused.extras });
             this.outputPaths.set(job.id, new Set(keepInside(paused.outputPaths, directory)));
             job.hasPartial = this.leftoversOf(job).length > 0;
+        });
+    }
+
+    private hasActiveUrl(url: string, excludeId?: string): boolean {
+        return this.jobs.some((existing) => {
+            return existing.id !== excludeId && existing.url === url && !isFinished(existing);
         });
     }
 
@@ -133,7 +142,6 @@ export class QueueManager {
             })
             .map((job) => {
                 const extras = { ...this.extras.get(job.id) };
-                delete extras.cookie;
                 delete extras.resumedPart;
                 return { job: { ...job }, extras, outputPaths: [...(this.outputPaths.get(job.id) ?? [])] };
             });
@@ -279,18 +287,20 @@ export class QueueManager {
         if (hasUnboundedAutoSubtitles(this.deps.getSettings())) {
             return { ok: false, job: null, message: translateMain('subtitles.unbounded') };
         }
+        if (this.hasActiveUrl(trimmed)) {
+            return { ok: false, job: null, message: translateMain('url.duplicate') };
+        }
         const job: DownloadJob = {
             id: this.generateId(),
             url: trimmed,
             status: 'queued',
-            title: options.title ?? null,
+            title: null,
             percent: 0,
             speed: '',
             eta: '',
             filePath: null,
             error: null,
             createdAt: this.now(),
-            pageUrl: options.pageUrl ?? null,
             live: false,
             elapsedSeconds: 0,
             downloadedBytes: 0,
@@ -340,7 +350,7 @@ export class QueueManager {
 
     retry(id: string): void {
         const job = this.find(id);
-        if (!job || (job.status !== 'error' && job.status !== 'cancelled')) {
+        if (!job || (job.status !== 'error' && job.status !== 'cancelled') || this.hasActiveUrl(job.url, job.id)) {
             return;
         }
         Object.assign(job, { status: 'queued', percent: 0, speed: '', eta: '', error: null, filePath: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null, postProcessSteps: [], parts: null });
@@ -452,12 +462,12 @@ export class QueueManager {
         if (this.closed) {
             return;
         }
-        const settings = this.deps.getSettings();
+        const limit = this.deps.maxConcurrent ?? CONCURRENT_DOWNLOADS;
         let running = this.jobs.filter((job) => {
             return job.status === 'running';
         }).length;
         for (const job of this.jobs) {
-            if (running >= settings.maxConcurrent) {
+            if (running >= limit) {
                 return;
             }
             if (job.status === 'queued') {

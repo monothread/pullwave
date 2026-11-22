@@ -7,10 +7,15 @@ afterEach(() => {
     cleanTempDirs();
 });
 
+function toPosix(path: string): string {
+    return path.replace(/\\/g, '/');
+}
+
 function tree(contents: Record<string, string>): ScanFileSystem {
     return {
         entries: (directory) => {
-            const prefix = directory === '/' ? '/' : `${directory}/`;
+            const normalized = toPosix(directory);
+            const prefix = normalized === '/' ? '/' : `${normalized}/`;
             const names = new Map<string, boolean>();
             Object.keys(contents).forEach((path) => {
                 if (path.startsWith(prefix) && path !== prefix) {
@@ -24,7 +29,7 @@ function tree(contents: Record<string, string>): ScanFileSystem {
             });
         },
         read: (path) => {
-            return contents[path] ?? null;
+            return contents[toPosix(path)] ?? null;
         }
     };
 }
@@ -60,8 +65,8 @@ describe('scanLibraryFolder', () => {
         expect(scanLibraryFolder('/lib', files)).toEqual({
             ignored: 0,
             episodes: [
-                { videoPath: '/lib/Naruto/Episode 1/Naruto Episode 1.mp4', title: 'Naruto', number: '1', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null },
-                { videoPath: '/lib/Naruto/Episode 2/Naruto Episode 2.mkv', title: 'Naruto', number: '2', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
+                { videoPath: join('/lib', 'Naruto', 'Episode 1', 'Naruto Episode 1.mp4'), title: 'Naruto', number: '1', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null },
+                { videoPath: join('/lib', 'Naruto', 'Episode 2', 'Naruto Episode 2.mkv'), title: 'Naruto', number: '2', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
             ]
         });
     });
@@ -84,7 +89,7 @@ describe('scanLibraryFolder', () => {
             ignored: 0,
             episodes: [
                 {
-                    videoPath: '/lib/Whatever/Renamed/video.mp4',
+                    videoPath: join('/lib', 'Whatever', 'Renamed', 'video.mp4'),
                     title: 'Re:Zero',
                     number: '2',
                     query: 're zero',
@@ -148,7 +153,7 @@ describe('scanLibraryFolder', () => {
     it('falls back to the names when the metadata is not valid', () => {
         const files = tree({ '/lib/Naruto/Episode 4/Naruto Episode 4.mp4': '', '/lib/Naruto/Episode 4/pullwave.json': META({ number: 'four' }) });
         expect(scanLibraryFolder('/lib', files).episodes).toEqual([
-            { videoPath: '/lib/Naruto/Episode 4/Naruto Episode 4.mp4', title: 'Naruto', number: '4', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
+            { videoPath: join('/lib', 'Naruto', 'Episode 4', 'Naruto Episode 4.mp4'), title: 'Naruto', number: '4', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
         ]);
     });
 
@@ -223,7 +228,7 @@ describe('scanLibraryFolder', () => {
             scanLibraryFolder('/lib', files).episodes.map((episode) => {
                 return episode.videoPath;
             })
-        ).toEqual(['/lib/A/A Episode 1.mp4', '/lib/A/A Episode 2.mp4', '/lib/B/B Episode 1.mp4']);
+        ).toEqual([join('/lib', 'A', 'A Episode 1.mp4'), join('/lib', 'A', 'A Episode 2.mp4'), join('/lib', 'B', 'B Episode 1.mp4')]);
     });
 
     it('gives nothing for a folder that is empty or cannot be read', () => {

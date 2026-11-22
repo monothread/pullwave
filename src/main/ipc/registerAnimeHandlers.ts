@@ -21,6 +21,7 @@ import {
     type AnimeSeriesResponse,
     type AnimeStreamResponse,
     type AnimeSubtitleCheckResponse,
+    type AnimeSubtitleDeleteResponse,
     type AnimeSubtitleImportResponse,
     type AnimeSubtitleTrack,
     type AnimeUpdateEntry,
@@ -79,6 +80,7 @@ export interface AnimeHandlerDependencies {
     subtitles: {
         list: (episodeId: number) => AnimeSubtitleTrack[];
         import: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
+        deleteTranslated: (episodeId: number, trackId: string) => AnimeSubtitleDeleteResponse;
         check: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
         translate: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
         translatable: (episodeIds: readonly number[]) => SubtitleTranslatableResponse;
@@ -335,6 +337,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
         return [];
     });
     ipcMain.handle(IPC.animeSubtitleImport, (): AnimeSubtitleImportResponse => {
+        return { ok: false, reason: 'missing' };
+    });
+    ipcMain.handle(IPC.animeSubtitleDelete, (): AnimeSubtitleDeleteResponse => {
         return { ok: false, reason: 'missing' };
     });
     ipcMain.handle(IPC.animeSubtitlesCheck, (): AnimeSubtitleCheckResponse => {
@@ -744,6 +749,18 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     ipcMain.handle(IPC.animeSubtitleImport, async (_event, episodeId): Promise<AnimeSubtitleImportResponse> => {
         const id = asId(episodeId);
         return id === null ? { ok: false, reason: 'missing' } : deps.subtitles.import(id);
+    });
+    ipcMain.handle(IPC.animeSubtitleDelete, (_event, episodeId, trackId): AnimeSubtitleDeleteResponse => {
+        const id = asId(episodeId);
+        const track = asTrackId(trackId);
+        if (id === null || track === undefined || track === null || track.length === 0) {
+            return { ok: false, reason: 'missing' };
+        }
+        const result = deps.subtitles.deleteTranslated(id, track);
+        if (result.ok) {
+            deps.refreshMetadata(id);
+        }
+        return result;
     });
     ipcMain.handle(IPC.animeSubtitlesCheck, async (_event, episodeId): Promise<AnimeSubtitleCheckResponse> => {
         const id = asId(episodeId);

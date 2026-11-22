@@ -14,7 +14,7 @@ function files(...names: string[]): DirectoryEntry[] {
 }
 
 describe('findPartialFiles', () => {
-    const FINAL = '/dl/Video [abc].mp4';
+    const FINAL = join('/dl', 'Video [abc].mp4');
 
     it('finds the partial file, the resume record and the fragments of the same download', () => {
         const entries = files(
@@ -24,19 +24,19 @@ describe('findPartialFiles', () => {
             'Video [abc].mp4.part-Frag12.part'
         );
         expect(findPartialFiles(FINAL, () => {return entries})).toEqual([
-            '/dl/Video [abc].mp4.part',
-            '/dl/Video [abc].mp4.ytdl',
-            '/dl/Video [abc].mp4.part-Frag12',
-            '/dl/Video [abc].mp4.part-Frag12.part'
+            join('/dl', 'Video [abc].mp4.part'),
+            join('/dl', 'Video [abc].mp4.ytdl'),
+            join('/dl', 'Video [abc].mp4.part-Frag12'),
+            join('/dl', 'Video [abc].mp4.part-Frag12.part')
         ]);
     });
 
     it('finds the partial files of the video and audio formats downloaded apart', () => {
         const entries = files('Video [abc].f137.mp4.part', 'Video [abc].f251-drc.webm.part', 'Video [abc].f251-drc.webm.ytdl');
         expect(findPartialFiles(FINAL, () => {return entries})).toEqual([
-            '/dl/Video [abc].f137.mp4.part',
-            '/dl/Video [abc].f251-drc.webm.part',
-            '/dl/Video [abc].f251-drc.webm.ytdl'
+            join('/dl', 'Video [abc].f137.mp4.part'),
+            join('/dl', 'Video [abc].f251-drc.webm.part'),
+            join('/dl', 'Video [abc].f251-drc.webm.ytdl')
         ]);
     });
 
@@ -52,7 +52,7 @@ describe('findPartialFiles', () => {
 
     it('treats characters of the name that mean something in a pattern as plain text', () => {
         const entries = files('A+B (1) [x.y].mp4.part', 'AxB (1) [x.y].mp4.part', 'A+B (1) [xzy].mp4.part');
-        expect(findPartialFiles('/dl/A+B (1) [x.y].mp4', () => {return entries})).toEqual(['/dl/A+B (1) [x.y].mp4.part']);
+        expect(findPartialFiles(join('/dl', 'A+B (1) [x.y].mp4'), () => {return entries})).toEqual([join('/dl', 'A+B (1) [x.y].mp4.part')]);
     });
 
     it('ignores folders that look like partial files', () => {
@@ -64,14 +64,14 @@ describe('findPartialFiles', () => {
         const listDirectory = vi.fn(() => {
             return files();
         });
-        findPartialFiles('/media/videos/Video [abc].mp4', listDirectory);
-        expect(listDirectory).toHaveBeenCalledWith('/media/videos');
+        findPartialFiles(join('/media', 'videos', 'Video [abc].mp4'), listDirectory);
+        expect(listDirectory).toHaveBeenCalledWith(join('/media', 'videos'));
     });
 
     it('works for a file without an extension', () => {
-        expect(findPartialFiles('/dl/stream', () => {return files('stream.part', 'stream.f1.mp4.part', 'streams.part')})).toEqual([
-            '/dl/stream.part',
-            '/dl/stream.f1.mp4.part'
+        expect(findPartialFiles(join('/dl', 'stream'), () => {return files('stream.part', 'stream.f1.mp4.part', 'streams.part')})).toEqual([
+            join('/dl', 'stream.part'),
+            join('/dl', 'stream.f1.mp4.part')
         ]);
     });
 

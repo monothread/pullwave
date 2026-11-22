@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { TRANSLATION_LANGUAGES, type AnimeSubtitleTrack, type AutoTranslateOffReason, type SubtitleTranslateRequest, type SubtitleTranslateResponse, type TranslationLanguage } from '@shared/anime';
 import type { LlmErrorCode, TranslationSetupGap } from '@shared/llm';
 import { AutoSubtitleTranslator, offReasonOf, type AutoSubtitleDependencies } from '@main/services/autoSubtitles';
@@ -368,15 +369,16 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
     const ENGLISH = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n';
 
     function filesWith(names: Record<string, string>): SubtitleFileSystem & { written: Map<string, string> } {
+        const folder = join('/anime', 'Fake');
         const contents = new Map(Object.entries(names).map(([name, text]) => {
-            return [`/anime/Fake/${name}`, text];
+            return [join(folder, name), text];
         }));
         const written = new Map<string, string>();
         return {
             written,
             list: () => {
                 return [...contents.keys()].map((path) => {
-                    return path.slice('/anime/Fake/'.length);
+                    return path.slice(folder.length + 1);
                 });
             },
             read: (path) => {
@@ -510,7 +512,7 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
 
         expect(ask).toHaveBeenCalledTimes(1);
         expect(ask.mock.calls[0]?.[1]).toBe(JSON.stringify(['Hello']));
-        expect([...files.written.entries()]).toEqual([['/anime/Fake/Fake Episode 4.translated-Spanish.vtt', 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nT: Hello\n']]);
+        expect([...files.written.entries()]).toEqual([[join('/anime', 'Fake', 'Fake Episode 4.translated-Spanish.vtt'), 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nT: Hello\n']]);
         expect(turnOff).not.toHaveBeenCalled();
     });
 

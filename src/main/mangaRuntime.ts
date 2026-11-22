@@ -1,12 +1,16 @@
-import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { IPC } from '@shared/constants';
 import { hasChapterFile, isMangaSupported } from '@shared/manga';
 import type { Settings, SiteBrowser } from '@shared/types';
 import type { MangaHandlerDependencies } from './ipc/registerMangaHandlers';
+import { isInsideDirectory } from './services/animeFiles';
 import { MangaChapterDownloader } from './services/manga/mangaChapterDownloader';
 import { MangaDb } from './services/manga/mangaDb';
 import { MangaDownloadQueue } from './services/manga/mangaDownloadQueue';
+import { importMangaLibrary } from './services/manga/mangaLibraryImport';
+import { scanMangaLibraryFolder, type MangaScanFileSystem } from './services/manga/mangaLibraryScan';
+import { defaultMangaMetadataFiles, MANGA_METADATA_FILE, refreshMangaMetadata, refreshMangaMetadataFor, type MangaMetadataFiles } from './services/manga/mangaMetadata';
 import { migrateMangaFolder, renameMangaFolder, type MangaMigrationFileSystem } from './services/manga/mangaMigration';
 import { MangaUpdateChecker } from './services/manga/mangaUpdateChecker';
 import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, isCompletePage, mangaDirectory } from './services/manga/mangaFiles';
@@ -38,9 +42,12 @@ export interface MangaRuntimeOptions {
     openFolder: (path: string) => void;
     checkTimes?: { firstMs: number; everyMs: number };
     openSite?: (url: string, browser: SiteBrowser) => void;
+    chooseLibraryFolder?: (startAt: string) => Promise<string | null>;
     chooseMigrationFolder?: (startAt: string) => Promise<string | null>;
     saveMangaDirectory?: (directory: string) => void;
     migrationFiles?: MangaMigrationFileSystem;
+    metadataFiles?: MangaMetadataFiles;
+    scanFiles?: MangaScanFileSystem;
     externalBaseUrl?: string | null;
     coverFallbackUrl?: string;
     toolDependencies?: Partial<ToolInstallerDependencies>;
@@ -62,6 +69,27 @@ export interface MangaRuntime {
     shutdown: () => Promise<void>;
 }
 
+function pathSize(path: string): number | null {
+    try {
+        const stats = statSync(path);
+        if (stats.isFile()) {
+            return stats.size;
+        }
+        if (stats.isDirectory()) {
+            return readdirSync(path, { withFileTypes: true }).reduce((total, entry) => {
+                if (!entry.isFile()) {
+                    return total;
+                }
+                const entrySize = pathSize(join(path, entry.name));
+                return total + (entrySize ?? 0);
+            }, 0);
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 function removeChapterPath(path: string): void {
     let stats;
     try {
@@ -74,12 +102,43 @@ function removeChapterPath(path: string): void {
     if (isArchive || isOwnFolder) {
         rmSync(path, { recursive: true, force: true });
         try {
-            if (readdirSync(dirname(path)).length === 0) {
-                rmdirSync(dirname(path));
+            const parent = dirname(path);
+            const remaining = readdirSync(parent);
+            if (remaining.length === 0) {
+                rmdirSync(parent);
+                return;
+            }
+            if (remaining.length === 1 && remaining[0] === MANGA_METADATA_FILE) {
+                rmSync(join(parent, MANGA_METADATA_FILE), { force: true });
+                rmdirSync(parent);
             }
         } catch {
             return;
         }
+    }
+}
+
+function isRealPathInside(child: string, parent: string, platform: NodeJS.Platform): boolean {
+    if (!isInsideDirectory(child, parent, platform)) {
+        return false;
+    }
+    try {
+        const realParent = realpathSync(parent);
+        const realChild = realpathSync(child);
+        return isInsideDirectory(realChild, realParent, platform);
+    } catch {
+        return false;
+    }
+}
+
+function removeMetadataIfRegularFile(metadataPath: string): void {
+    try {
+        const stats = lstatSync(metadataPath);
+        if (stats.isFile() && !stats.isSymbolicLink()) {
+            rmSync(metadataPath, { force: true });
+        }
+    } catch {
+        return;
     }
 }
 
@@ -98,7 +157,7 @@ export function forgetSelectedServer(toolsDirectory: string, remove: (path: stri
         try {
             remove(join(toolsDirectory, name));
         } catch {
-            // Nothing reads it any more.
+            return;
         }
     });
 }
@@ -206,6 +265,9 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
     const notifyLibraryEntryChanged = (mangaId: number): void => {
         send(IPC.eventMangaLibraryEntry, mangaId);
     };
+    const refreshMetadata = (mangaId: number): void => {
+        refreshMangaMetadata(db, mangaId, options.metadataFiles ?? defaultMangaMetadataFiles, options.platform);
+    };
     const queue = new MangaDownloadQueue({
         db,
         download: (downloadOptions) => {
@@ -230,6 +292,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         onLibraryChanged: notifyLibraryChanged,
         onLibraryEntryChanged: notifyLibraryEntryChanged,
+        onChapterDownloaded: refreshMetadata,
         onHeldChange: (held) => {
             send(IPC.eventMangaQueueHeld, held);
         }
@@ -277,7 +340,8 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return downloader.repair(repairOptions, signal);
         },
         pathExists: existsSync,
-        onLibraryEntryChanged: notifyLibraryEntryChanged
+        onLibraryEntryChanged: notifyLibraryEntryChanged,
+        onChapterRepaired: refreshMetadata
     });
     const updates = new MangaToolUpdates({
         flaresolverrFile,
@@ -340,7 +404,63 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
                     send(IPC.eventMangaMigration, progress);
                 }
             });
+            if (outcome.ok) {
+                db.list().forEach((manga) => {
+                    if (
+                        manga.chapters.some((chapter) => {
+                            return hasChapterFile(chapter.status) && chapter.filePath !== null;
+                        })
+                    ) {
+                        refreshMangaMetadataFor(manga, options.metadataFiles ?? defaultMangaMetadataFiles, options.platform);
+                    }
+                });
+            }
             return outcome.ok ? { ...outcome, destination: chosen } : outcome;
+        },
+        importLibrary: async () => {
+            const initialBase = baseDirectory();
+            const chosen = await (options.chooseLibraryFolder?.(initialBase) ?? Promise.resolve(null));
+            if (chosen === null) {
+                return { ok: false, reason: 'cancelled' };
+            }
+            const currentBase = baseDirectory();
+            const allowed = options.scanFiles === undefined ? isRealPathInside(chosen, currentBase, options.platform) : isInsideDirectory(chosen, currentBase, options.platform);
+            if (!allowed) {
+                return { ok: false, reason: 'outside', folder: currentBase };
+            }
+            const scan = await scanMangaLibraryFolder(chosen, options.scanFiles, options.platform);
+            const summary = importMangaLibrary(db, scan, {
+                pathSize,
+                onMangaSaved: refreshMetadata
+            });
+            return { ok: true, ...summary };
+        },
+        refreshMetadata,
+        cleanupStaleMetadata: (folders) => {
+            if (folders.length === 0) {
+                return;
+            }
+            const activeFolders = new Set<string>();
+            db.list().forEach((manga) => {
+                manga.chapters.forEach((chapter) => {
+                    if (hasChapterFile(chapter.status) && chapter.filePath !== null) {
+                        activeFolders.add(dirname(chapter.filePath));
+                    }
+                });
+            });
+            new Set(folders).forEach((folder) => {
+                if (activeFolders.has(folder)) {
+                    return;
+                }
+                removeMetadataIfRegularFile(join(folder, MANGA_METADATA_FILE));
+                try {
+                    if (readdirSync(folder).length === 0) {
+                        rmdirSync(folder);
+                    }
+                } catch {
+                    return;
+                }
+            });
         },
         renameFolder: (manga, title) => {
             return renameMangaFolder({

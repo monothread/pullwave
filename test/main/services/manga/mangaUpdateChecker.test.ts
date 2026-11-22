@@ -259,6 +259,25 @@ describe('MangaUpdateChecker', () => {
             expect(FIRST_CHECK_DELAY_MS).toBe(120_000);
         });
 
+        it('skips locally imported mangas without querying the source', async () => {
+            const context = setup();
+            const local = context.db.importManga({
+                sourceId: null,
+                remoteId: null,
+                title: 'Local Manga',
+                thumbnailUrl: null,
+                url: null,
+                author: null,
+                artist: null,
+                description: null,
+                genres: [],
+                status: 'unknown'
+            });
+            expect(await context.checker.checkManga(local.id)).toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+            expect(await context.checker.checkNow('manual')).toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+            expect(context.fetched).toEqual([]);
+        });
+
         it('stops checking when it is stopped, and can be started again', async () => {
             const context = setup();
             addManga(context, 7, 'One Piece', [1]);

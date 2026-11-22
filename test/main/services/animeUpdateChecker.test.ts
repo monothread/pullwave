@@ -453,6 +453,17 @@ describe('AnimeUpdateChecker.checkNow', () => {
             expect(context.db.getAnime(id)?.searchIndex).toBe(3);
         });
 
+        it('refreshes the stored sourceId when the matched search result provides a new one', async () => {
+            const context = setup();
+            const id = context.addAnime('Naruto', 'naruto', 1);
+            context.results.naruto = [{ index: 1, title: 'Naruto', sourceId: 'naruto-updated-99' }];
+            context.lists['naruto:1'] = ['1'];
+
+            await context.checker.checkNow('auto');
+
+            expect(context.db.getAnime(id)?.sourceId).toBe('naruto-updated-99');
+        });
+
         it('finds an anime that was put in the library without its place (0) by its title, and keeps the place', async () => {
             const context = setup();
             const id = context.addAnime('Naruto', 'naruto', 0);

@@ -1295,13 +1295,27 @@ describe('migrateFolder', () => {
         expect(useAnimeStore.getState().migration).toBeNull();
     });
 
-    it('follows the progress the app reports, once the store is listening', async () => {
+    it('follows the progress the app reports while a migration is running, and ignores late progress after it finishes', async () => {
         mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
         await useAnimeStore.getState().init();
+        let finish: (response: { ok: false; reason: 'cancelled' }) => void = () => {
+            return;
+        };
+        mock.api.migrateAnimeFolder.mockReturnValue(
+            new Promise((resolve) => {
+                finish = resolve;
+            })
+        );
+        const running = useAnimeStore.getState().migrateFolder();
         mock.emitAnimeMigrationProgress({ done: 2, total: 9 });
         expect(useAnimeStore.getState().migration).toEqual({ done: 2, total: 9 });
         mock.emitAnimeMigrationProgress({ done: 9, total: 9 });
         expect(useAnimeStore.getState().migration).toEqual({ done: 9, total: 9 });
+        finish({ ok: false, reason: 'cancelled' });
+        await running;
+        expect(useAnimeStore.getState().migration).toBeNull();
+        mock.emitAnimeMigrationProgress({ done: 9, total: 9 });
+        expect(useAnimeStore.getState().migration).toBeNull();
     });
 
     it('says nothing and does not read the library when the user gives up', async () => {

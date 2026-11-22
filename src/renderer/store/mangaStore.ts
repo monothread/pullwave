@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useFxStore } from '../fx/fxStore';
 import { batchNavigation } from '../navigation/navigationBatch';
-import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
+import { hasChapterFile, IDLE_MANGA_CHECK_STATE, LOCAL_MANGA_SOURCE_ID, MAX_READING_KEPT } from '@shared/manga';
 import type { MessageKey, MessageParams } from '@shared/i18n/core';
 import { createTranslator } from '../i18n/catalogs';
 import type {
@@ -290,6 +290,7 @@ interface MangaState {
     openFolder: (mangaId: number) => Promise<void>;
     openSite: (url: string) => Promise<void>;
     migrateFolder: () => Promise<MangaMigrationResponse>;
+    importLibrary: () => Promise<void>;
     removeManga: (mangaId: number) => Promise<void>;
     removeDownload: (chapterId: number) => Promise<void>;
 
@@ -609,7 +610,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     }
                 }),
                 api.onMigrationProgress((migration) => {
-                    set({ migration });
+                    if (get().migration !== null) {
+                        set({ migration });
+                    }
                 }),
                 api.onCheckState((checkState) => {
                     set({ checkState });
@@ -709,7 +712,19 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         recordReading: async (record) => {
-            await window.api.manga.recordReading(record);
+            const saved = await window.api.manga.recordReading(record);
+            if (saved !== null && saved !== undefined && get().history.length > 0) {
+                set((state) => {
+                    const others = state.history.filter((entry) => {
+                        return !(entry.sourceId === saved.sourceId && entry.mangaRemoteId === saved.mangaRemoteId);
+                    });
+                    const merged = [saved, ...others].sort((first, second) => {
+                        return second.readAt - first.readAt || second.id - first.id;
+                    });
+                    return { history: merged.slice(0, MAX_READING_KEPT) };
+                });
+                return;
+            }
             await get()
                 .loadHistory()
                 .catch(() => {
@@ -1083,11 +1098,15 @@ export const useMangaStore = create<MangaState>((set, get) => {
             const fromLibrary = get().view === 'library';
             const saved = fromLibrary ? libraryEntry(get().library, manga.sourceId, manga.remoteId) : null;
             const local = saved === null ? null : localDetails(saved);
+            const isLocalOnly = manga.sourceId === LOCAL_MANGA_SOURCE_ID && local !== null;
             set({
                 selection: local === null ? { manga, status: 'loading', details: null, chapters: [], selected: [], error: null } : { manga, status: 'ready', details: local.details, chapters: local.chapters, selected: [], error: null },
-                selectionRefresh: { loading: local !== null, error: null },
+                selectionRefresh: { loading: local !== null && !isLocalOnly, error: null },
                 selectionFrom: fromLibrary ? 'library' : get().view === 'search' ? 'search' : 'browse'
             });
+            if (isLocalOnly) {
+                return;
+            }
             const result = await window.api.manga.details(manga.remoteId);
             const current = get().selection;
             if (current === null || current.manga.remoteId !== manga.remoteId) {
@@ -1393,6 +1412,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         migrateFolder: async () => {
+            if (get().migration !== null) {
+                return { ok: false, reason: 'busy' };
+            }
             set({ migration: { done: 0, total: 0 } });
             try {
                 const response = await window.api.manga.migrateFolder();
@@ -1405,6 +1427,28 @@ export const useMangaStore = create<MangaState>((set, get) => {
             } finally {
                 set({ migration: null });
             }
+        },
+
+        importLibrary: async () => {
+            const response = await window.api.manga.importLibrary();
+            if (!response.ok) {
+                if (response.reason === 'outside') {
+                    useAppStore.getState().setNotice({ kind: 'error', message: translateNow('manga.import.outside', { folder: response.folder }) });
+                } else if (response.reason === 'busy') {
+                    useAppStore.getState().setNotice({ kind: 'error', message: translateNow('manga.import.busy') });
+                }
+                return;
+            }
+            await get().refreshLibrary();
+            useAppStore.getState().setNotice({
+                kind: 'info',
+                message: translateNow('manga.import.done', {
+                    added: response.added,
+                    relinked: response.relinked,
+                    skipped: response.skipped,
+                    ignored: response.ignored
+                })
+            });
         },
 
         removeManga: async (mangaId) => {

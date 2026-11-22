@@ -166,16 +166,16 @@ function setup(options: { sources?: HlsSource[]; tuning?: Partial<HlsRecorderTun
 
 describe('partPathFor', () => {
     it('keeps the first rendition beside the final file, where the queue measures it', () => {
-        expect(partPathFor('/d/Live [room].mp4', 0)).toBe('/d/Live [room].mp4.part');
+        expect(partPathFor(join('/d', 'Live [room].mp4'), 0)).toBe(join('/d', 'Live [room].mp4.part'));
     });
 
     it('names the other renditions like the pieces yt-dlp leaves, with their extension', () => {
-        expect(partPathFor('/d/Live [room].mp4', 1)).toBe('/d/Live [room].f1.mp4.part');
-        expect(partPathFor('/d/Live [room].mkv', 2)).toBe('/d/Live [room].f2.mkv.part');
+        expect(partPathFor(join('/d', 'Live [room].mp4'), 1)).toBe(join('/d', 'Live [room].f1.mp4.part'));
+        expect(partPathFor(join('/d', 'Live [room].mkv'), 2)).toBe(join('/d', 'Live [room].f2.mkv.part'));
     });
 
     it('names the other renditions of a file with no extension', () => {
-        expect(partPathFor('/d/Live', 1)).toBe('/d/Live.f1.part');
+        expect(partPathFor(join('/d', 'Live'), 1)).toBe(join('/d', 'Live.f1.part'));
     });
 });
 

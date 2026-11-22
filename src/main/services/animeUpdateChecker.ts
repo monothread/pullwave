@@ -10,7 +10,7 @@ import {
     type LibraryAnime
 } from '@shared/anime';
 import type { AnimeDb } from './animeDb';
-import { resolveResult } from './animeSourceMatch';
+import { resolveMatchedResult } from './animeSourceMatch';
 
 export const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
 export const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
@@ -18,9 +18,11 @@ export const RETRY_BASE_MS = 60 * 60 * 1000;
 export const BACKOFF_LIMIT_MS = 6 * 60 * 60 * 1000;
 
 export interface AnimeUpdateCheckerDependencies {
-    db: Pick<AnimeDb, 'list' | 'getLibraryAnime' | 'hasEpisodesBaseline' | 'registerEpisodesBaseline' | 'registerNewEpisodes' | 'updateSearchIndex'>;
+    db: Pick<AnimeDb, 'list' | 'getLibraryAnime' | 'hasEpisodesBaseline' | 'registerEpisodesBaseline' | 'registerNewEpisodes' | 'updateSearchIndex'> &
+        Partial<Pick<AnimeDb, 'updateSourceIdentity'>>;
     search: (query: string, atLeast?: number) => Promise<AniRunResult<AnimeSearchResult[]>>;
     episodes: (query: string, index: number) => Promise<AniRunResult<string[]>>;
+    sourceProvider?: () => string | null;
     isEnabled: () => boolean;
     autoDownload?: () => boolean;
     download?: (animeId: number, episodes: string[]) => void;
@@ -226,14 +228,18 @@ export class AnimeUpdateChecker {
         if (!searched.ok) {
             return searched.outcome;
         }
-        const index = resolveResult(anime, searched.value);
-        if (index === null) {
+        const matched = resolveMatchedResult(anime, searched.value);
+        if (matched === null) {
             return { kind: 'skipped' };
         }
-        if (index !== anime.searchIndex) {
-            this.deps.db.updateSearchIndex(anime.id, index);
+        if (matched.index !== anime.searchIndex) {
+            this.deps.db.updateSearchIndex(anime.id, matched.index);
         }
-        const listed = answerOf(await this.deps.episodes(anime.query, index));
+        const provider = this.deps.sourceProvider?.() ?? null;
+        if (matched.sourceId && (anime.sourceId !== matched.sourceId || provider !== null)) {
+            this.deps.db.updateSourceIdentity?.(anime.id, matched.sourceId, provider);
+        }
+        const listed = answerOf(await this.deps.episodes(anime.query, matched.index));
         if (!listed.ok) {
             return listed.outcome;
         }

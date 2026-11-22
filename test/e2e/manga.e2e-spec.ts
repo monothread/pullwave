@@ -4436,4 +4436,65 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(chart.getByRole('button', { name: 'REFRESH' })).toBeEnabled();
         expect(existsSync(mangaFolder())).toBe(false);
     });
+
+    test('writes pullwave.json next to downloaded chapters, imports a manga folder into a fresh library and rejects folders outside the manga folder', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await waitForDownloaded(session.page);
+
+        const metadataPath = join(mangaFolder(), 'One Piece', 'pullwave.json');
+        expect(existsSync(metadataPath)).toBe(true);
+        const metadata = JSON.parse(readFileSync(metadataPath, 'utf-8')) as { version: number; title: string; sourceId: string; remoteId: number };
+        expect(metadata).toMatchObject({ version: 1, title: 'One Piece', sourceId: SOURCE_ID, remoteId: 7 });
+
+        await session.app.close();
+        rmSync(join(workDir, 'userData'), { recursive: true, force: true });
+
+        session = await launch({}, { PULLWAVE_MANGA_IMPORT_DIR: mangaFolder() });
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'IMPORT LIBRARY', exact: true }).click();
+        await expect(session.page.locator('.toast--info .toast__message', { hasText: 'IMPORT DONE:' })).toHaveText(
+            'IMPORT DONE: 2 ADDED · 0 POINTED TO A NEW PLACE · 0 ALREADY IN THE LIBRARY · 0 NOT RECOGNIZED'
+        );
+
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'READ: The Great Race', exact: true })).toBeVisible();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+
+        await session.app.close();
+        rmSync(join(workDir, 'userData'), { recursive: true, force: true });
+        rmSync(metadataPath, { force: true });
+
+        session = await launch({}, { PULLWAVE_MANGA_IMPORT_DIR: mangaFolder() });
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'IMPORT LIBRARY', exact: true }).click();
+        await expect(session.page.locator('.toast--info .toast__message', { hasText: 'IMPORT DONE:' })).toHaveText(
+            'IMPORT DONE: 2 ADDED · 0 POINTED TO A NEW PLACE · 0 ALREADY IN THE LIBRARY · 0 NOT RECOGNIZED'
+        );
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const localReader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(localReader.getByText('1 / 3')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await expect(localReader).toHaveCount(0);
+
+        const outside = join(workDir, 'outside');
+        mkdirSync(outside, { recursive: true });
+        await session.app.close();
+        session = await launch({}, { PULLWAVE_MANGA_IMPORT_DIR: outside });
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'IMPORT LIBRARY', exact: true }).click();
+        await expect(session.page.locator('.toast--error .toast__message', { hasText: 'Only folders inside the manga folder can be imported:' })).toContainText(mangaFolder());
+    });
 });

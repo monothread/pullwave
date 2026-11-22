@@ -519,6 +519,83 @@ describe('runAniCli log', () => {
             { id: 3, at: NOW, stream: 'event', text: 'exited with code 0' }
         ]);
     });
+
+    it('suppresses expected Invalid anime selection stderr and logs stopped when expectMenuExit is true and menu choices were printed', async () => {
+        const fake = createFakeChild();
+        const { writer, calls } = createFakeLogWriter();
+        const handle = runAniCli({
+            binary: '/bin/busybox',
+            args: ['sh', '/bin/ani-cli', 'naruto'],
+            env: ENV,
+            expectMenuExit: true,
+            spawnFn: () => {
+                return fake.child;
+            },
+            platform: 'linux',
+            killGroup: vi.fn(),
+            log: writer
+        });
+        fake.stdout.write('PULLWAVE_MENU\tSelect anime:\t1 Naruto (220 episodes)\n');
+        fake.stderr.write('Invalid anime selection\n');
+        fake.emitter.emit('close', 1);
+        await handle.result;
+
+        expect(calls).toEqual([
+            { method: 'command', program: '/bin/busybox', args: ['sh', '/bin/ani-cli', 'naruto'] },
+            { method: 'line', stream: 'stdout', text: 'PULLWAVE_MENU\tSelect anime:\t1 Naruto (220 episodes)' },
+            { method: 'stopped' }
+        ]);
+    });
+
+    it('suppresses expected menu-exit stderr even when stderr arrives before stdout and preserves crash signals', async () => {
+        const fakeRace = createFakeChild();
+        const raceLog = createFakeLogWriter();
+        const raceHandle = runAniCli({
+            binary: '/bin/busybox',
+            args: ['sh', '/bin/ani-cli', 'naruto'],
+            env: ENV,
+            expectMenuExit: true,
+            spawnFn: () => {
+                return fakeRace.child;
+            },
+            platform: 'linux',
+            killGroup: vi.fn(),
+            log: raceLog.writer
+        });
+        fakeRace.stderr.write('Invalid anime selection\n');
+        fakeRace.stdout.write('PULLWAVE_MENU\tSelect anime:\t1 Naruto (220 episodes)\n');
+        fakeRace.emitter.emit('close', 1);
+        await raceHandle.result;
+        expect(raceLog.calls).toEqual([
+            { method: 'command', program: '/bin/busybox', args: ['sh', '/bin/ani-cli', 'naruto'] },
+            { method: 'line', stream: 'stdout', text: 'PULLWAVE_MENU\tSelect anime:\t1 Naruto (220 episodes)' },
+            { method: 'stopped' }
+        ]);
+
+        const fakeCrash = createFakeChild();
+        const crashLog = createFakeLogWriter();
+        const crashHandle = runAniCli({
+            binary: '/bin/busybox',
+            args: ['sh', '/bin/ani-cli', 'naruto'],
+            env: ENV,
+            expectMenuExit: true,
+            spawnFn: () => {
+                return fakeCrash.child;
+            },
+            platform: 'linux',
+            killGroup: vi.fn(),
+            log: crashLog.writer
+        });
+        fakeCrash.stdout.write('PULLWAVE_MENU\tSelect anime:\t1 Naruto (220 episodes)\n');
+        fakeCrash.emitter.emit('exit', null, 'SIGKILL');
+        fakeCrash.emitter.emit('close', null);
+        await crashHandle.result;
+        expect(crashLog.calls).toEqual([
+            { method: 'command', program: '/bin/busybox', args: ['sh', '/bin/ani-cli', 'naruto'] },
+            { method: 'line', stream: 'stdout', text: 'PULLWAVE_MENU\tSelect anime:\t1 Naruto (220 episodes)' },
+            { method: 'exit', code: null, signal: 'SIGKILL' }
+        ]);
+    });
 });
 
 describe('asDownloadResult', () => {

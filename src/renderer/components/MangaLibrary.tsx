@@ -200,6 +200,9 @@ export function MangaLibrary() {
     const closeSeries = useMangaStore((state) => {
         return state.closeSeries;
     });
+    const importLibrary = useMangaStore((state) => {
+        return state.importLibrary;
+    });
     const sourcesStatus = useMangaStore((state) => {
         return state.browse.sourcesStatus;
     });
@@ -222,12 +225,26 @@ export function MangaLibrary() {
         }
     }, [sourcesStatus, loadSources]);
 
+    const importButton = (
+        <button
+            type="button"
+            className="btn btn--small"
+            title={t('manga.import.hint')}
+            onClick={() => {
+                void importLibrary();
+            }}
+        >
+            {t('manga.import.button')}
+        </button>
+    );
+
     if (selection !== null && selectionFrom === 'library') {
         return <MangaDetail />;
     }
     if (library.length === 0) {
         return (
             <section className="manga__library" aria-label={t('manga.nav.library')}>
+                <div className="field-row">{importButton}</div>
                 <p className="empty">{t('manga.library.empty')}</p>
             </section>
         );
@@ -273,6 +290,7 @@ export function MangaLibrary() {
             {!searching && <MangaLibrarySpotlight />}
             <div className="field-row">
                 <TextField search label={t('manga.library.search.label')} value={search} placeholder={t('manga.library.search.placeholder')} onChange={setSearch} />
+                {importButton}
                 <button
                     type="button"
                     className="btn btn--small"

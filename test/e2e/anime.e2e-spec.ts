@@ -1621,7 +1621,7 @@ test('keeps the library after the app is restarted', { tag: '@windows' }, async 
     await expect(session.page.getByText('// NO DOWNLOADS YET.')).toBeVisible();
 });
 
-test.describe('player', { tag: '@windows' }, () => {
+test.describe('player', () => {
     async function downloadEpisode(page: Page): Promise<void> {
         await openAnimeTab(page);
         await openFirstResult(page);
@@ -1649,7 +1649,7 @@ test.describe('player', { tag: '@windows' }, () => {
         );
     }
 
-    test('serves the whole file, the part that is asked for and the subtitles', async () => {
+    test('serves the whole file, the part that is asked for and the subtitles', { tag: '@windows' }, async () => {
         const { page } = session;
         await downloadEpisode(page);
 
@@ -1669,7 +1669,7 @@ test.describe('player', { tag: '@windows' }, () => {
         expect(subtitles.body).toBe('WEBVTT\n');
     });
 
-    test('refuses a range past the end and what is not in the library', async () => {
+    test('refuses a range past the end and what is not in the library', { tag: '@windows' }, async () => {
         const { page } = session;
         await downloadEpisode(page);
 
@@ -1683,7 +1683,7 @@ test.describe('player', { tag: '@windows' }, () => {
         expect((await request('pullwave-media://episode/abc')).status).toBe(404);
     });
 
-    test('opens the video of a downloaded episode in a dialog and closes it', async () => {
+    test('opens the video of a downloaded episode in a dialog and closes it', { tag: '@windows' }, async () => {
         const { page } = session;
         await downloadEpisode(page);
         await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
@@ -4231,6 +4231,36 @@ test.describe('translating subtitles with a language model', () => {
         expect(served.status).toBe(200);
         expect(served.headers['content-type']).toBe('text/vtt; charset=utf-8');
         expect(served.body).toBe(SPANISH_SUBTITLE);
+    });
+
+    test('deletes a translated subtitle from the subtitle manager, removes its file and clears the active track', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1]);
+        const dialog = await openPlayer(page);
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
+        await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
+        await expect(translate).toBeHidden();
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE TRANSLATED' })).toHaveText('SUBTITLE TRANSLATED INTO Spanish.');
+        expect(existsSync(translatedFile(1))).toBe(true);
+
+        const manager = page.getByRole('dialog', { name: 'Manage subtitles' });
+        await expect(manager.getByRole('button', { name: 'DELETE Spanish', exact: true })).toBeVisible();
+        await manager.getByRole('button', { name: 'DELETE Spanish', exact: true }).click();
+        await answerConfirm(page, 'Delete translated subtitle', 'DELETE');
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'TRANSLATED SUBTITLE DELETED.' })).toBeVisible();
+        await expect(manager.getByRole('button', { name: 'DELETE Spanish', exact: true })).toHaveCount(0);
+
+        expect(existsSync(translatedFile(1))).toBe(false);
+        expect(existsSync(join(episodeFolder(1), 'Fake Anime Episode 1.subtitle-English.vtt'))).toBe(true);
+
+        await openPlayerSettingsAfter(manager, dialog);
+        const menu = dialog.getByRole('combobox', { name: 'Subtitles' });
+        expect(await menu.locator('option').allTextContents()).not.toContain('Spanish');
+        expect(await menu.inputValue()).not.toBe('translated-Spanish');
+        const served = await mediaRequest('pullwave-media://subtitle/1/translated-Spanish');
+        expect(served.status).toBe(404);
     });
 
     test('says the settings have no token, and asks the provider for nothing', async () => {

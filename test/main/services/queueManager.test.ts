@@ -27,7 +27,10 @@ function progress(overrides: Partial<ProgressInfo> = {}): ProgressInfo {
 
 const DOWNLOAD_ERROR: DownloadError = { code: 'NETWORK', title: 'Network failure', hint: 'Check your connection and try again.', raw: 'boom' };
 
-function setup(settings: Partial<Settings> = {}, extraDeps: Partial<QueueDependencies> = {}) {
+type SetupSettings = Partial<Settings> & { maxConcurrent?: number };
+
+function setup(settings: SetupSettings = {}, extraDeps: Partial<QueueDependencies> = {}) {
+    const { maxConcurrent, ...restSettings } = settings;
     const runs: ControlledRun[] = [];
     const updates: DownloadJob[] = [];
     const removed: string[] = [];
@@ -36,11 +39,12 @@ function setup(settings: Partial<Settings> = {}, extraDeps: Partial<QueueDepende
     let counter = 0;
     let clock = 1000;
     const fileSizes = new Map<string, number>();
-    const currentSettings: Settings = { ...DEFAULT_SETTINGS, maxConcurrent: 2, verifyLiveEnd: false, ...settings };
+    const currentSettings: Settings = { ...DEFAULT_SETTINGS, verifyLiveEnd: false, ...restSettings };
     const queue = new QueueManager({
         getSettings: () => {
             return currentSettings;
         },
+        maxConcurrent: maxConcurrent ?? 2,
         defaultDownloadDir: '/dl',
         resolveYtdlpPath: (resolvedSettings) => {
             return resolvedSettings.ytdlpPath.length > 0 ? resolvedSettings.ytdlpPath : 'yt-dlp';
@@ -176,7 +180,6 @@ describe('QueueManager.add', () => {
             filePath: null,
             error: null,
             createdAt: 1001,
-            pageUrl: null,
             live: false,
             elapsedSeconds: 0,
             downloadedBytes: 0,
@@ -196,7 +199,7 @@ describe('QueueManager.add', () => {
         })).toEqual(['queued', 'running']);
         expect(runs).toHaveLength(1);
         expect(runs[0]?.binary).toBe('yt-dlp');
-        expect(runs[0]?.args).toEqual(buildYtdlpArgs(URL_A, { ...DEFAULT_SETTINGS, maxConcurrent: 2 }, '/dl', '/bundled/bin'));
+        expect(runs[0]?.args).toEqual(buildYtdlpArgs(URL_A, DEFAULT_SETTINGS, '/dl', '/bundled/bin'));
     });
 
     it('uses the custom yt-dlp binary path', () => {
@@ -609,7 +612,7 @@ describe('QueueManager partial files', () => {
     const PARTIALS_A = [`${FILE_A}.part`, '/dl/Video A [abc].f137.mp4.part'];
     const LIVE_FILE = '/dl/Live Show [live].mp4';
 
-    function setupWithPartials(settings: Partial<Settings> = {}) {
+    function setupWithPartials(settings: SetupSettings = {}) {
         const partials = new Map<string, string[]>([
             [FILE_A, PARTIALS_A],
             ['/dl/Video B [def].mp4', ['/dl/Video B [def].mp4.part']],
@@ -911,70 +914,50 @@ describe('QueueManager.pendingCount', () => {
     });
 });
 
-describe('QueueManager request extras (streams found on a page)', () => {
-    const STREAM = 'https://cdn.test/v/master.m3u8';
-    const EXTRAS = { referer: 'https://site.test/ep-1', userAgent: 'Agent/1.0', cookie: 'sid=1', title: 'Episode 1' };
+describe('QueueManager duplicate URL rejection', () => {
+    it('rejects a URL that is already running, queued, or paused', async () => {
+        const { queue, runs } = setup({ maxConcurrent: 1 });
+        expect(queue.add(URL_A).ok).toBe(true);
+        expect(queue.add(URL_B).ok).toBe(true);
 
-    it('starts the job with the extras and shows the page title right away', () => {
-        const { queue, runs } = setup();
-        const result = queue.add(STREAM, EXTRAS);
-        expect(result.job?.title).toBe('Episode 1');
-        expect(runs[0]?.args).toEqual(buildYtdlpArgs(STREAM, { ...DEFAULT_SETTINGS, maxConcurrent: 2 }, '/dl', '/bundled/bin', EXTRAS));
-        expect(runs[0]?.args).toEqual(expect.arrayContaining(['--referer', 'https://site.test/ep-1', '--user-agent', 'Agent/1.0', '--add-header', 'Cookie:sid=1']));
+        expect(queue.add(URL_A)).toEqual({ ok: false, job: null, message: 'This link is already in the queue.' });
+        expect(queue.add(`  ${URL_B}  `)).toEqual({ ok: false, job: null, message: 'This link is already in the queue.' });
+
+        queue.pause('job-1');
+        await flush();
+        expect(queue.getJob('job-1')?.status).toBe('paused');
+        expect(queue.add(URL_A)).toEqual({ ok: false, job: null, message: 'This link is already in the queue.' });
+        expect(runs).toHaveLength(2);
     });
 
-    it('keeps the extras when the job is retried', async () => {
-        const { queue, runs } = setup();
-        queue.add(STREAM, EXTRAS);
+    it('allows adding the same URL again once the earlier download finished, failed, or was cancelled', async () => {
+        const { queue, runs } = setup({ maxConcurrent: 1 });
+        expect(queue.add(URL_A).ok).toBe(true);
+        runs[0]?.resolve({ status: 'done', filePath: '/dl/a.mp4' });
+        await flush();
+        expect(queue.add(URL_A).ok).toBe(true);
+
+        runs[1]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
+        await flush();
+        expect(queue.add(URL_A).ok).toBe(true);
+
+        queue.cancel('job-3');
+        await flush();
+        expect(queue.add(URL_A).ok).toBe(true);
+    });
+
+    it('prevents retrying a failed or cancelled job while another active job has the same URL', async () => {
+        const { queue, runs } = setup({ maxConcurrent: 2 });
+        expect(queue.add(URL_A).ok).toBe(true);
         runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
         await flush();
+
+        expect(queue.add(URL_A).ok).toBe(true);
+        expect(runs).toHaveLength(2);
+
         queue.retry('job-1');
-        expect(runs[1]?.args).toEqual(runs[0]?.args);
-    });
-
-    it('forgets the extras when the job is removed', async () => {
-        const { queue, runs } = setup();
-        queue.add(STREAM, EXTRAS);
-        runs[0]?.resolve({ status: 'done', filePath: null });
-        await flush();
-        queue.remove('job-1');
-        queue.add(STREAM);
-        expect(runs[1]?.args).not.toContain('--referer');
-    });
-
-    it('does not leak extras between jobs', () => {
-        const { queue, runs } = setup({ maxConcurrent: 3 });
-        queue.add(STREAM, EXTRAS);
-        queue.add(URL_B);
-        expect(runs[0]?.args).toContain('--referer');
-        expect(runs[1]?.args).not.toContain('--referer');
-        expect(runs[1]?.args).toContain('%(title).80s [%(id)s].%(ext)s');
-    });
-});
-
-describe('QueueManager page address and IP family extras', () => {
-    it('remembers the page a stream came from on the job and forces the bound IP family', () => {
-        const { queue, runs } = setup();
-        const result = queue.add('https://cdn.test/videoplayback?ip=2001:db8::1', { pageUrl: 'https://site.test/ep-1', ipFamily: 6 });
-        expect(result.job?.pageUrl).toBe('https://site.test/ep-1');
-        expect(queue.getJob('job-1')?.pageUrl).toBe('https://site.test/ep-1');
-        expect(runs[0]?.args).toContain('--force-ipv6');
-        expect(runs[0]?.args).not.toContain('https://site.test/ep-1');
-    });
-
-    it('has no page address for a link the user pasted', () => {
-        const { queue } = setup();
-        expect(queue.add(URL_A).job?.pageUrl).toBeNull();
-    });
-
-    it('keeps the page address and the IP family when the job is retried', async () => {
-        const { queue, runs } = setup();
-        queue.add('https://cdn.test/v?ip=203.0.113.9', { pageUrl: 'https://site.test/ep-1', ipFamily: 4 });
-        runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
-        await flush();
-        queue.retry('job-1');
-        expect(runs[1]?.args).toContain('--force-ipv4');
-        expect(queue.getJob('job-1')?.pageUrl).toBe('https://site.test/ep-1');
+        expect(queue.getJob('job-1')?.status).toBe('error');
+        expect(runs).toHaveLength(2);
     });
 });
 
@@ -1446,7 +1429,7 @@ describe('QueueManager end of live check', () => {
         await vi.advanceTimersByTimeAsync(0);
     }
 
-    async function recordLive(settings: Partial<Settings> = {}) {
+    async function recordLive(settings: SetupSettings = {}) {
         const context = setup({ verifyLiveEnd: true, verifyLiveEndSeconds: 10, ...settings });
         context.queue.add(URL_A);
         context.runs[0]?.onInfo(liveInfo);
@@ -1574,7 +1557,7 @@ describe('QueueManager end of live check', () => {
             await endRecording(context);
             expect(context.runs).toHaveLength(2);
             expect(context.runs[1]?.args).toEqual(
-                buildYtdlpArgs(URL_A, { ...DEFAULT_SETTINGS, maxConcurrent: 2, verifyLiveEnd: true, verifyLiveEndSeconds: 10, liveFromStart: true, waitForLive: true }, '/dl', '/bundled/bin', { resumedPart: 2 })
+                buildYtdlpArgs(URL_A, { ...DEFAULT_SETTINGS, verifyLiveEnd: true, verifyLiveEndSeconds: 10, liveFromStart: true, waitForLive: true }, '/dl', '/bundled/bin', { resumedPart: 2 })
             );
             expect(context.runs[1]?.args).toEqual(expect.arrayContaining(['--match-filter', 'is_live']));
             expect(context.runs[1]?.args).not.toContain('--live-from-start');
@@ -1584,12 +1567,12 @@ describe('QueueManager end of live check', () => {
 
         it('keeps the extras of the request in the attempts', async () => {
             const context = setup({ verifyLiveEnd: true });
-            context.queue.add(URL_A, { referer: 'https://page.test/', title: 'Show' });
+            context.queue.add(URL_A, { downloadDir: '/custom/live' });
             context.runs[0]?.onInfo(liveInfo);
             context.runs[0]?.resolve(ENDED);
             await settle();
-            expect(context.runs[1]?.args).toEqual(expect.arrayContaining(['--referer', 'https://page.test/']));
-            expect(context.runs[1]?.args).toContain('Show [%(id)s] (part 2).%(ext)s');
+            expect(context.runs[1]?.args).toEqual(expect.arrayContaining(['-P', '/custom/live']));
+            expect(context.runs[1]?.args).toContain('%(title).80s [%(id)s] (part 2).%(ext)s');
         });
 
         it('tries again shortly after an attempt that found nothing, as long as there is time', async () => {
@@ -2189,7 +2172,7 @@ describe('QueueManager download options', () => {
     });
 
     const effective = (overrides: Partial<Settings>): Settings => {
-        return { ...DEFAULT_SETTINGS, maxConcurrent: 2, verifyLiveEnd: false, ...overrides };
+        return { ...DEFAULT_SETTINGS, verifyLiveEnd: false, ...overrides };
     };
 
     it('marks the job as customized only when it has options', () => {
@@ -2307,7 +2290,7 @@ describe('QueueManager pause and resume', () => {
     const FILE = '/dl/Video A [abc].mp4';
     const PARTIALS = [`${FILE}.part`, '/dl/Video A [abc].f137.mp4.part', `${FILE}.ytdl`];
 
-    function setupWithPartials(settings: Partial<Settings> = {}) {
+    function setupWithPartials(settings: SetupSettings = {}) {
         const findPartialFiles = vi.fn((finalPath: string) => {
             return finalPath === FILE ? PARTIALS : [];
         });
@@ -2743,7 +2726,7 @@ describe('QueueManager paused downloads kept for the next run', () => {
         return { storage: { load, save }, load, save, kept: () => {return kept} };
     }
 
-    function setupWithStorage(initial: PausedDownload[] = [], settings: Partial<Settings> = {}) {
+    function setupWithStorage(initial: PausedDownload[] = [], settings: SetupSettings = {}) {
         const stored = makeStorage(initial);
         const findPartialFiles = vi.fn((finalPath: string) => {
             return finalPath === FILE ? PARTIALS : [];
@@ -2764,34 +2747,23 @@ describe('QueueManager paused downloads kept for the next run', () => {
         it('writes the paused download, with its files and how it was asked for, as soon as it is paused', async () => {
             const result = setupWithStorage();
 
-            await pause(result, { referer: 'https://example.com/', userAgent: 'Mozilla/5.0', title: 'Video A', pageUrl: 'https://example.com/page', ipFamily: 4, options: { maxResolution: '720' } });
+            await pause(result, { downloadDir: '/dl/custom', options: { maxResolution: '720' } });
 
             expect(result.save).toHaveBeenCalledTimes(1);
             const [saved] = result.kept();
-            expect(saved?.job).toMatchObject({ id: 'job-1', url: URL_A, status: 'paused', percent: 42.5, speed: '', eta: '', title: 'Video A', pageUrl: 'https://example.com/page', customized: true });
-            expect(saved?.extras).toEqual({ referer: 'https://example.com/', userAgent: 'Mozilla/5.0', title: 'Video A', pageUrl: 'https://example.com/page', ipFamily: 4, options: { maxResolution: '720' } });
+            expect(saved?.job).toMatchObject({ id: 'job-1', url: URL_A, status: 'paused', percent: 42.5, speed: '', eta: '', title: 'Video A', customized: true });
+            expect(saved?.extras).toEqual({ downloadDir: '/dl/custom', options: { maxResolution: '720' } });
             expect(saved?.outputPaths).toEqual([FILE]);
         });
 
-        it('never writes the cookie of the page, nor the part number of a recording', async () => {
+        it('never writes the part number of a recording', async () => {
             const result = setupWithStorage();
 
-            await pause(result, { referer: 'https://example.com/', cookie: 'session=secret', resumedPart: 2 });
+            await pause(result, { downloadDir: '/dl/custom', resumedPart: 2 });
 
             const [saved] = result.kept();
-            expect(saved?.extras).toEqual({ referer: 'https://example.com/' });
-            expect(JSON.stringify(result.kept())).not.toContain('secret');
-            expect(JSON.stringify(result.kept())).not.toContain('cookie');
-        });
-
-        it('keeps the cookie in memory, so the download still goes on with it while the app is open', async () => {
-            const result = setupWithStorage();
-            await pause(result, { cookie: 'session=secret' });
-
-            result.queue.resume('job-1');
-
-            expect(result.runs[1]?.args).toEqual(result.runs[0]?.args);
-            expect(result.runs[1]?.args.join(' ')).toContain('session=secret');
+            expect(saved?.extras).toEqual({ downloadDir: '/dl/custom' });
+            expect(JSON.stringify(result.kept())).not.toContain('resumedPart');
         });
 
         it('keeps all the paused downloads, and only them', async () => {
@@ -2905,8 +2877,8 @@ describe('QueueManager paused downloads kept for the next run', () => {
     describe('getting them back', () => {
         function pausedDownload(overrides: Partial<PausedDownload> = {}): PausedDownload {
             return {
-                job: makeJob({ id: 'saved-1', url: URL_A, status: 'paused', title: 'Video A', percent: 61.5, speed: '', eta: '', createdAt: 1700000000000, pageUrl: null, customized: false }),
-                extras: { referer: 'https://example.com/', userAgent: 'Mozilla/5.0', title: 'Video A' },
+                job: makeJob({ id: 'saved-1', url: URL_A, status: 'paused', title: 'Video A', percent: 61.5, speed: '', eta: '', createdAt: 1700000000000, customized: false }),
+                extras: {},
                 outputPaths: [FILE],
                 ...overrides
             };
@@ -2944,21 +2916,13 @@ describe('QueueManager paused downloads kept for the next run', () => {
         });
 
         it('goes on from it when it is resumed: yt-dlp is started with the arguments the download was asked for', () => {
-            const { queue, runs } = setupWithStorage([pausedDownload({ extras: { referer: 'https://example.com/', userAgent: 'Mozilla/5.0', title: 'Video A', options: { maxResolution: '720' } } })]);
+            const { queue, runs } = setupWithStorage([pausedDownload({ extras: { downloadDir: '/dl/custom', options: { maxResolution: '720' } } })]);
 
             queue.resume('saved-1');
 
             expect(runs).toHaveLength(1);
-            expect(runs[0]?.args).toEqual(buildYtdlpArgs(URL_A, { ...DEFAULT_SETTINGS, maxConcurrent: 2, verifyLiveEnd: false, ...{ maxResolution: '720' } }, '/dl', '/bundled/bin', { referer: 'https://example.com/', userAgent: 'Mozilla/5.0', title: 'Video A', options: { maxResolution: '720' } }));
+            expect(runs[0]?.args).toEqual(buildYtdlpArgs(URL_A, { ...DEFAULT_SETTINGS, verifyLiveEnd: false, maxResolution: '720' }, '/dl', '/bundled/bin', { downloadDir: '/dl/custom', options: { maxResolution: '720' } }));
             expect(queue.getJob('saved-1')).toMatchObject({ status: 'running', percent: 61.5 });
-        });
-
-        it('uses the page it was found on when it is resumed, so a fresh address can still be looked for', () => {
-            const { queue } = setupWithStorage([pausedDownload({ job: { ...pausedDownload().job, pageUrl: 'https://example.com/page' } })]);
-
-            queue.resume('saved-1');
-
-            expect(queue.getJob('saved-1')?.pageUrl).toBe('https://example.com/page');
         });
 
         it('finishes like any other download and goes to the history', async () => {
@@ -3050,7 +3014,7 @@ describe('QueueManager closing the app with downloads going on', () => {
     const FILE = '/dl/Video A [abc].mp4';
     const PARTIALS = [`${FILE}.part`, `${FILE}.ytdl`];
 
-    function setupClosing(settings: Partial<Settings> = {}, initial: PausedDownload[] = []) {
+    function setupClosing(settings: SetupSettings = {}, initial: PausedDownload[] = []) {
         let present = true;
         const findPartialFiles = vi.fn((finalPath: string) => {
             return present && finalPath === FILE ? PARTIALS : [];
@@ -3266,7 +3230,7 @@ describe('QueueManager closing the app with downloads going on', () => {
     describe('a paused download read from the file', () => {
         function savedDownload(outputPaths: string[], extras: PausedDownload['extras'] = {}): PausedDownload {
             return {
-                job: makeJob({ id: 'saved-1', url: URL_A, status: 'paused', title: 'Video A', percent: 61.5, speed: '', eta: '', createdAt: 1700000000000, pageUrl: null, customized: false }),
+                job: makeJob({ id: 'saved-1', url: URL_A, status: 'paused', title: 'Video A', percent: 61.5, speed: '', eta: '', createdAt: 1700000000000, customized: false }),
                 extras,
                 outputPaths
             };

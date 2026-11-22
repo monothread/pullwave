@@ -7,13 +7,7 @@ const LIVE_WAIT_SECONDS = '30';
 const LIVE_ONLY_FILTER = 'is_live';
 
 export interface RequestExtras {
-    referer?: string;
-    userAgent?: string;
-    cookie?: string;
-    title?: string;
     downloadDir?: string;
-    ipFamily?: 4 | 6;
-    pageUrl?: string;
     resumedPart?: number;
     options?: DownloadOptions;
 }
@@ -29,27 +23,9 @@ export function splitArguments(input: string): string[] {
     return tokens;
 }
 
-const INVALID_FILENAME_CHARACTERS = new Set(['\\', '/', ':', '*', '?', '"', '<', '>', '|']);
-
-function replaceInvalidCharacters(title: string): string {
-    return Array.from(title, (character) => {
-        return character.charCodeAt(0) < 32 || INVALID_FILENAME_CHARACTERS.has(character) ? ' ' : character;
-    }).join('');
-}
-
-export function escapeTitleForTemplate(title: string, maxLength: number): string {
-    return replaceInvalidCharacters(title)
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, maxLength)
-        .trim()
-        .replace(/%/g, '%%');
-}
-
 function buildOutputTemplate(settings: Settings, extras: RequestExtras): string {
-    const title = extras.title ? escapeTitleForTemplate(extras.title, settings.maxTitleLength) : '';
     const part = extras.resumedPart === undefined ? '' : ` (part ${extras.resumedPart})`;
-    return title.length > 0 ? `${title} [%(id)s]${part}.%(ext)s` : `%(title).${settings.maxTitleLength}s [%(id)s]${part}.%(ext)s`;
+    return `%(title).${settings.maxTitleLength}s [%(id)s]${part}.%(ext)s`;
 }
 
 function buildLiveArgs(settings: Settings, extras: RequestExtras): string[] {
@@ -62,23 +38,6 @@ function buildLiveArgs(settings: Settings, extras: RequestExtras): string[] {
     }
     if (settings.liveFromStart) {
         args.push('--live-from-start', '--downloader-args', 'ffmpeg_i:-live_start_index 0');
-    }
-    return args;
-}
-
-function buildRequestArgs(extras: RequestExtras): string[] {
-    const args: string[] = [];
-    if (extras.referer) {
-        args.push('--referer', extras.referer);
-    }
-    if (extras.userAgent) {
-        args.push('--user-agent', extras.userAgent);
-    }
-    if (extras.cookie) {
-        args.push('--add-header', `Cookie:${extras.cookie}`);
-    }
-    if (extras.ipFamily) {
-        args.push(extras.ipFamily === 6 ? '--force-ipv6' : '--force-ipv4');
     }
     return args;
 }
@@ -172,7 +131,6 @@ export function buildYtdlpArgs(
         ...buildCookieArgs(settings),
         ...buildSubtitleArgs(settings),
         ...buildOptionalArgs(settings, ffmpegLocation),
-        ...buildRequestArgs(extras),
         ...splitArguments(settings.extraArgs),
         '--',
         url

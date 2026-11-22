@@ -5,6 +5,7 @@ import type { LibraryManga, MangaChapterRecord, MangaMigrationFailure, MangaMigr
 import { isInsideDirectory, removeEmptyDirectories } from '../animeFiles';
 import type { MangaDb } from './mangaDb';
 import { chapterWorkDirectory } from './mangaFiles';
+import { MANGA_METADATA_FILE } from './mangaMetadata';
 
 export interface MangaMigrationFileSystem {
     size: (path: string) => number | null;
@@ -281,7 +282,21 @@ export async function migrateMangaFolder(dependencies: MangaMigrationDependencie
         undoCopy(copied, created, files);
         return { ok: false, reason: 'failed' };
     }
-    removeOldFiles(plan, foldersToClean(chapters, files, dependencies), files);
+    const oldMetadata = [...new Set(chapters.map((chapter) => {
+        return path.join(chapter.oldMangaFolder, MANGA_METADATA_FILE);
+    }))].filter((metaPath) => {
+        return files.exists(metaPath);
+    });
+    removeOldFiles(
+        [
+            ...plan,
+            ...oldMetadata.map((from) => {
+                return { from, to: from };
+            })
+        ],
+        foldersToClean(chapters, files, dependencies),
+        files
+    );
     return { ok: true, chapters: chapters.length, files: plan.length };
 }
 

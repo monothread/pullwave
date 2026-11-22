@@ -29,6 +29,7 @@ import type {
     AnimeSearchResponse,
     AnimeStatus,
     AnimeSubtitleCheckResponse,
+    AnimeSubtitleDeleteResponse,
     AnimeSubtitleImportResponse,
     SubtitleEstimateRequest,
     SubtitleGenerateEstimateResponse,
@@ -182,7 +183,6 @@ export interface Settings {
     autoSubtitles: boolean;
     embedSubtitles: boolean;
     rateLimit: string;
-    maxConcurrent: number;
     ytdlpPath: string;
     ffmpegPath: string;
     jsRuntime: string;
@@ -261,7 +261,6 @@ export interface DownloadJob {
     filePath: string | null;
     error: DownloadError | null;
     createdAt: number;
-    pageUrl: string | null;
     live: boolean;
     elapsedSeconds: number;
     downloadedBytes: number;
@@ -480,6 +479,7 @@ export interface CyberApi {
     saveAnimeProgress: (update: AnimeProgressUpdate) => Promise<void>;
     listAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleTrack[]>;
     importAnimeSubtitle: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
+    deleteAnimeSubtitle: (episodeId: number, trackId: string) => Promise<AnimeSubtitleDeleteResponse>;
     checkAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
     translateAnimeSubtitle: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
     estimateAnimeSubtitleTranslation: (request: SubtitleEstimateRequest) => Promise<SubtitleEstimateResponse>;

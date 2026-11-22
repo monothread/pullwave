@@ -8,8 +8,10 @@ import { parseErrorDetails, serializeErrorDetails } from '../errorDetails';
 import {
     ARRIVAL_ORIGINS,
     hasChapterFile,
+    LOCAL_MANGA_SOURCE_ID,
     MANGA_CHAPTER_STATUSES,
     MANGA_STATUSES,
+    MAX_READING_KEPT,
     type ArrivalOrigin,
     type LibraryManga,
     type MangaChapter,
@@ -31,7 +33,7 @@ import {
 
 export const MAX_UPDATES_KEPT = 1000;
 
-export const MAX_READING_KEPT = 500;
+export { LOCAL_MANGA_SOURCE_ID, MAX_READING_KEPT };
 
 export const INTERRUPTED_MESSAGE = 'The app was closed before the download finished.';
 
@@ -221,9 +223,23 @@ function compareChapters(first: MangaChapterRecord, second: MangaChapterRecord):
     return second.sourceOrder - first.sourceOrder || first.id - second.id;
 }
 
+export interface ImportMangaInput {
+    sourceId: string | null;
+    remoteId: number | null;
+    title: string;
+    thumbnailUrl: string | null;
+    url: string | null;
+    author: string | null;
+    artist: string | null;
+    description: string | null;
+    genres: string[];
+    status: MangaStatus;
+}
+
 export class MangaDb {
     private readonly db: DatabaseSync;
     private readonly statements = new Map<string, StatementSync>();
+    private transactionDepth = 0;
 
     constructor(
         path: string,
@@ -240,6 +256,32 @@ export class MangaDb {
         } catch (error) {
             this.db.close();
             throw error;
+        }
+    }
+
+    transaction<T>(work: () => T): T {
+        const outer = this.transactionDepth === 0;
+        if (outer) {
+            this.db.exec('BEGIN');
+        }
+        this.transactionDepth += 1;
+        try {
+            const result = work();
+            if (outer) {
+                this.db.exec('COMMIT');
+            }
+            return result;
+        } catch (error) {
+            if (outer) {
+                try {
+                    this.db.exec('ROLLBACK');
+                } catch {
+                    throw error;
+                }
+            }
+            throw error;
+        } finally {
+            this.transactionDepth -= 1;
         }
     }
 
@@ -377,8 +419,7 @@ export class MangaDb {
 
     registerChapters(mangaId: number, chapters: readonly MangaChapter[], arrived: boolean | ArrivalOrigin = false): void {
         const origin: ArrivalOrigin | null = arrived === false ? null : arrived === true ? 'manual' : arrived;
-        this.db.exec('BEGIN');
-        try {
+        this.transaction(() => {
             chapters.forEach((chapter) => {
                 const existed = origin !== null && this.findChapter(mangaId, chapter.remoteId) !== null;
                 this.run(
@@ -404,11 +445,7 @@ export class MangaDb {
                 }
             });
             this.run('DELETE FROM chapter_update WHERE id NOT IN (SELECT id FROM chapter_update ORDER BY found_at DESC, id DESC LIMIT ?)', MAX_UPDATES_KEPT);
-            this.db.exec('COMMIT');
-        } catch (error) {
-            this.db.exec('ROLLBACK');
-            throw error;
-        }
+        });
     }
 
     ensureChapter(mangaId: number, chapter: MangaChapter, arrived = false): MangaChapterRecord {
@@ -510,6 +547,83 @@ export class MangaDb {
             this.db.exec('ROLLBACK');
             throw error;
         }
+    }
+
+    relinkChapter(chapterId: number, filePath: string, sizeBytes: number | null, pageCount?: number): void {
+        if (pageCount !== undefined && pageCount > 0) {
+            this.run('UPDATE chapter SET file_path = ?, size_bytes = ?, page_count = ? WHERE id = ?', filePath, sizeBytes, pageCount, chapterId);
+            return;
+        }
+        this.run('UPDATE chapter SET file_path = ?, size_bytes = ? WHERE id = ?', filePath, sizeBytes, chapterId);
+    }
+
+    importManga(input: ImportMangaInput): MangaRecord {
+        if (input.sourceId !== null && input.remoteId !== null) {
+            const existing = this.findManga(input.sourceId, input.remoteId);
+            if (existing !== null) {
+                return existing;
+            }
+            const inserted = toManga(
+                this.one(
+                    'INSERT INTO manga (source_id, remote_id, title, thumbnail_url, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *',
+                    input.sourceId,
+                    input.remoteId,
+                    input.title,
+                    input.thumbnailUrl,
+                    this.now()
+                ) ?? {}
+            );
+            this.saveDetails(inserted.id, {
+                url: input.url,
+                author: input.author,
+                artist: input.artist,
+                description: input.description,
+                genres: input.genres,
+                status: input.status
+            });
+            return this.getManga(inserted.id) ?? inserted;
+        }
+        const existingRow = this.one('SELECT * FROM manga WHERE source_id = ? AND LOWER(title) = LOWER(?) ORDER BY id LIMIT 1', LOCAL_MANGA_SOURCE_ID, input.title);
+        if (existingRow !== null) {
+            return toManga(existingRow);
+        }
+        const minRow = this.one('SELECT MIN(remote_id) AS min_id FROM manga WHERE source_id = ?', LOCAL_MANGA_SOURCE_ID);
+        const nextRemoteId = Math.min(0, nullableNumeric(minRow ?? {}, 'min_id') ?? 0) - 1;
+        const inserted = toManga(
+            this.one(
+                'INSERT INTO manga (source_id, remote_id, title, thumbnail_url, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *',
+                LOCAL_MANGA_SOURCE_ID,
+                nextRemoteId,
+                input.title,
+                input.thumbnailUrl,
+                this.now()
+            ) ?? {}
+        );
+        this.saveDetails(inserted.id, {
+            url: input.url,
+            author: input.author,
+            artist: input.artist,
+            description: input.description,
+            genres: input.genres,
+            status: input.status
+        });
+        return this.getManga(inserted.id) ?? inserted;
+    }
+
+    findChapterByNumberOrName(mangaId: number, number: number | null, name: string): MangaChapterRecord | null {
+        if (number !== null) {
+            const byNumber = this.one('SELECT * FROM chapter WHERE manga_id = ? AND number = ? ORDER BY id LIMIT 1', mangaId, number);
+            if (byNumber !== null) {
+                return toChapter(byNumber);
+            }
+        }
+        const byName = this.one('SELECT * FROM chapter WHERE manga_id = ? AND LOWER(name) = LOWER(?) ORDER BY id LIMIT 1', mangaId, name);
+        return byName === null ? null : toChapter(byName);
+    }
+
+    nextLocalChapterRemoteId(mangaId: number): number {
+        const minRow = this.one('SELECT MIN(remote_id) AS min_id FROM chapter WHERE manga_id = ?', mangaId);
+        return Math.min(0, nullableNumeric(minRow ?? {}, 'min_id') ?? 0) - 1;
     }
 
     moveToSource(
@@ -778,15 +892,17 @@ export class MangaDb {
         this.run('DELETE FROM chapter_update');
     }
 
-    recordReading(record: ReadingRecord): void {
-        const title = this.findManga(record.sourceId, record.mangaRemoteId)?.title ?? record.title;
-        this.run(
+    recordReading(record: ReadingRecord): ReadingEntry {
+        const manga = this.findManga(record.sourceId, record.mangaRemoteId);
+        const title = manga?.title ?? record.title;
+        const row = this.one(
             `INSERT INTO reading_history (source_id, manga_remote_id, title, thumbnail_url, chapter_remote_id, chapter_name, chapter_number, page, page_count, read_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (source_id, manga_remote_id) DO UPDATE SET
                 title = excluded.title, thumbnail_url = excluded.thumbnail_url, chapter_remote_id = excluded.chapter_remote_id,
                 chapter_name = excluded.chapter_name, chapter_number = excluded.chapter_number, page = excluded.page,
-                page_count = excluded.page_count, read_at = excluded.read_at`,
+                page_count = excluded.page_count, read_at = excluded.read_at
+             RETURNING *`,
             record.sourceId,
             record.mangaRemoteId,
             title,
@@ -799,6 +915,21 @@ export class MangaDb {
             this.now()
         );
         this.run('DELETE FROM reading_history WHERE id NOT IN (SELECT id FROM reading_history ORDER BY read_at DESC, id DESC LIMIT ?)', MAX_READING_KEPT);
+        const saved = row ?? {};
+        return {
+            id: numeric(saved, 'id'),
+            sourceId: text(saved, 'source_id'),
+            mangaRemoteId: numeric(saved, 'manga_remote_id'),
+            title: text(saved, 'title'),
+            thumbnailUrl: nullableText(saved, 'thumbnail_url'),
+            chapterRemoteId: numeric(saved, 'chapter_remote_id'),
+            chapterName: text(saved, 'chapter_name'),
+            chapterNumber: nullableNumeric(saved, 'chapter_number'),
+            page: numeric(saved, 'page'),
+            pageCount: numeric(saved, 'page_count'),
+            readAt: numeric(saved, 'read_at'),
+            libraryMangaId: manga?.id ?? null
+        };
     }
 
     readingHistory(limit = MAX_READING_KEPT): ReadingEntry[] {

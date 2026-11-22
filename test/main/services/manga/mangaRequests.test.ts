@@ -124,10 +124,12 @@ describe('asPageIndex', () => {
 });
 
 describe('asReadRequest', () => {
-    it('reads the chapter on the server, with or without the one of the library', () => {
+    it('reads the chapter on the server, with or without the one of the library, and allows negative local IDs when backed by a library chapter', () => {
         expect(asReadRequest({ chapterRemoteId: 11, libraryChapterId: 4 })).toEqual({ chapterRemoteId: 11, libraryChapterId: 4 });
+        expect(asReadRequest({ chapterRemoteId: -1, libraryChapterId: 4 })).toEqual({ chapterRemoteId: -1, libraryChapterId: 4 });
         expect(asReadRequest({ chapterRemoteId: 11, libraryChapterId: null })).toEqual({ chapterRemoteId: 11, libraryChapterId: null });
         expect(asReadRequest({ chapterRemoteId: 11 })).toEqual({ chapterRemoteId: 11, libraryChapterId: null });
+        expect(asReadRequest({ chapterRemoteId: -1, libraryChapterId: null })).toBeNull();
     });
 
     it.each([[null], ['x'], [{}], [{ chapterRemoteId: 0 }], [{ chapterRemoteId: '1' }], [{ chapterRemoteId: 1, libraryChapterId: 0 }], [{ chapterRemoteId: 1, libraryChapterId: 'a' }]])('refuses %j', (value) => {
@@ -427,8 +429,19 @@ describe('asSourceMigrationRequest', () => {
 describe('asReadingRecord', () => {
     const RECORD = { sourceId: '123', mangaRemoteId: 7, title: ' One Piece ', thumbnailUrl: '/api/v1/manga/7/thumbnail', chapterRemoteId: 11, chapterName: ' Romance Dawn ', chapterNumber: 1, page: 3, pageCount: 20 };
 
-    it('accepts where the user is, with the texts trimmed', () => {
+    it('accepts where the user is, with the texts trimmed, and allows negative IDs for local imported mangas', () => {
         expect(asReadingRecord(RECORD)).toEqual({ sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail', chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 });
+        expect(asReadingRecord({ ...RECORD, sourceId: 'local', mangaRemoteId: -1, chapterRemoteId: -2 })).toEqual({
+            sourceId: 'local',
+            mangaRemoteId: -1,
+            title: 'One Piece',
+            thumbnailUrl: '/api/v1/manga/7/thumbnail',
+            chapterRemoteId: -2,
+            chapterName: 'Romance Dawn',
+            chapterNumber: 1,
+            page: 3,
+            pageCount: 20
+        });
     });
 
     it('accepts the first page, the last page, and a chapter with no name, number or cover', () => {

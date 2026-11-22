@@ -11,7 +11,23 @@ function isPlainFile(path: string): boolean {
     }
 }
 
-export function removeLegacyBinaries(dataDir: string, keep: readonly string[] = []): string[] {
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function errorCode(error: unknown): string | null {
+    const code = (error as { code?: unknown } | null)?.code;
+    return typeof code === 'string' ? code : null;
+}
+
+export function removeLegacyBinaries(
+    dataDir: string,
+    keep: readonly string[] = [],
+    onError?: (message: string) => void,
+    removeFile: (path: string) => void = (path) => {
+        rmSync(path);
+    }
+): string[] {
     const folder = join(dataDir, 'bin');
     let present: string[];
     try {
@@ -33,17 +49,21 @@ export function removeLegacyBinaries(dataDir: string, keep: readonly string[] = 
             return LEGACY_FILES.includes(name) && isPlainFile(path) && !protectedPaths.includes(resolve(path));
         })
         .forEach((name) => {
+            const target = join(folder, name);
             try {
-                rmSync(join(folder, name));
+                removeFile(target);
                 removed.push(name);
-            } catch {
-                // Kept: the next start tries again.
+            } catch (error) {
+                onError?.(`Could not remove legacy binary ${target}: ${errorMessage(error)}`);
             }
         });
     try {
         rmdirSync(folder);
-    } catch {
-        // Not empty (something else is there) or not removable: kept.
+    } catch (error) {
+        const code = errorCode(error);
+        if (code !== 'ENOTEMPTY' && code !== 'ENOENT') {
+            onError?.(`Could not remove legacy folder ${folder}: ${errorMessage(error)}`);
+        }
     }
     return removed;
 }

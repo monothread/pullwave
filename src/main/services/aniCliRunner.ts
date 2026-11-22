@@ -42,7 +42,10 @@ export interface AniRunOptions {
     platform?: NodeJS.Platform;
     killGroup?: GroupKill;
     log?: LogWriter;
+    expectMenuExit?: boolean;
 }
+
+const EXPECTED_MENU_EXIT_LINE = /^Invalid (?:anime|episode) selection$/i;
 
 export interface AniRunHandle {
     result: Promise<AniRunResult<AniRunOutcome>>;
@@ -56,6 +59,7 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     log.command(options.binary, options.args);
     const child = spawnFn(options.binary, options.args, options.env);
     const menuChoices: MenuChoice[] = [];
+    const suppressedMenuExitLines: string[] = [];
     let output = '';
     let destination: string | null = null;
     let moreResults = false;
@@ -67,8 +71,13 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     let exitSignal: NodeJS.Signals | null = null;
 
     const writeToLog = (stream: OutputStream, line: string): void => {
-        if (parseProgressLine(stripAnsi(line))) {
+        const clean = stripAnsi(line);
+        if (parseProgressLine(clean)) {
             log.progress(stream, line);
+            return;
+        }
+        if (options.expectMenuExit === true && stream === 'stderr' && EXPECTED_MENU_EXIT_LINE.test(clean.trim())) {
+            suppressedMenuExitLines.push(line);
             return;
         }
         log.line(stream, line);
@@ -115,12 +124,12 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     };
 
     const stdoutSplitter = createLineSplitter((line) => {
-        writeToLog('stdout', line);
         handleLine(line);
+        writeToLog('stdout', line);
     });
     const stderrSplitter = createLineSplitter((line) => {
-        writeToLog('stderr', line);
         handleLine(line);
+        writeToLog('stderr', line);
     });
     child.stdout.setEncoding('utf-8');
     child.stderr.setEncoding('utf-8');
@@ -148,7 +157,17 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
             stdoutSplitter.flush();
             stderrSplitter.flush();
             if (!settled) {
-                log.exit(code, exitSignal);
+                const isExpectedMenuExit = options.expectMenuExit === true && menuChoices.length > 0 && code !== null && code !== 0 && exitSignal === null && !cancelled;
+                if (!isExpectedMenuExit) {
+                    suppressedMenuExitLines.forEach((line) => {
+                        log.line('stderr', line);
+                    });
+                }
+                if (isExpectedMenuExit) {
+                    log.stopped();
+                } else {
+                    log.exit(code, exitSignal);
+                }
             }
             if (cancelled) {
                 settle({ status: 'cancelled' });

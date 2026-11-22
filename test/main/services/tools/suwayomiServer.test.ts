@@ -545,6 +545,103 @@ describe('SuwayomiServer log', () => {
         ]);
         await server.stop();
     });
+
+    it('writes server.pid while running, clears it on stop, and cleans up a matching orphaned server PID before launching', async () => {
+        const dataDirectory = join(makeTempDir(), 'data');
+        const installDirectory = makeTempDir();
+        const pidFile = join(dataDirectory, 'server.pid');
+        const jar = join(installDirectory, 'bin', 'Suwayomi-Server.jar');
+        mkdirSync(dataDirectory, { recursive: true });
+        writeFileSync(pidFile, JSON.stringify({ pid: 99991, jar }));
+
+        let alive = true;
+        const killed: Array<[number, NodeJS.Signals | undefined]> = [];
+        const { server, processes } = setup({
+            dataDirectory,
+            installDirectory,
+            isProcessMatching: (pid, expectedJar) => {
+                return pid === 99991 && expectedJar === jar;
+            },
+            isPidAlive: (pid) => {
+                return pid === 99991 && alive;
+            },
+            killPid: (pid, _platform, signal) => {
+                killed.push([pid, signal]);
+                alive = false;
+            }
+        });
+
+        await server.ensureRunning();
+        expect(killed).toEqual([[99991, 'SIGTERM']]);
+        expect(existsSync(pidFile)).toBe(true);
+        expect(JSON.parse(readFileSync(pidFile, 'utf-8'))).toEqual({ pid: processes[0]?.pid, jar });
+
+        await server.stop();
+        expect(existsSync(pidFile)).toBe(false);
+    });
+
+    it('never kills an unrelated process when a stale server.pid points to a reused PID', async () => {
+        const dataDirectory = join(makeTempDir(), 'data');
+        const installDirectory = makeTempDir();
+        const pidFile = join(dataDirectory, 'server.pid');
+        const jar = join(installDirectory, 'bin', 'Suwayomi-Server.jar');
+        mkdirSync(dataDirectory, { recursive: true });
+        writeFileSync(pidFile, JSON.stringify({ pid: 88882, jar }));
+
+        const killPid = vi.fn();
+        const { server } = setup({
+            dataDirectory,
+            installDirectory,
+            isProcessMatching: () => {
+                return false;
+            },
+            killPid
+        });
+
+        await server.ensureRunning();
+        expect(killPid).not.toHaveBeenCalled();
+        await server.stop();
+    });
+
+    it('removes corrupted server.pid files, ignores spoofed jar markers, and aborts startup when stop() runs during orphan cleanup', async () => {
+        const dataDirectory = join(makeTempDir(), 'data');
+        const installDirectory = makeTempDir();
+        const pidFile = join(dataDirectory, 'server.pid');
+        const expectedJar = join(installDirectory, 'bin', 'Suwayomi-Server.jar');
+        mkdirSync(dataDirectory, { recursive: true });
+        writeFileSync(pidFile, '{corrupt');
+
+        const { server } = setup({ dataDirectory, installDirectory });
+        await server.ensureRunning();
+        expect(JSON.parse(readFileSync(pidFile, 'utf-8'))).toMatchObject({ jar: expectedJar });
+        await server.stop();
+
+        writeFileSync(pidFile, JSON.stringify({ pid: 77771, jar: '/' }));
+        const seenMarkers: string[] = [];
+        let releaseCleanup: (() => void) | null = null;
+        const cleanupWaiting = new Promise<void>((resolve) => {
+            releaseCleanup = resolve;
+        });
+        const second = setup({
+            dataDirectory,
+            installDirectory,
+            isProcessMatching: async (_pid, marker) => {
+                seenMarkers.push(marker);
+                await cleanupWaiting;
+                return false;
+            }
+        });
+        const starting = second.server.ensureRunning();
+        await vi.waitFor(() => {
+            expect(seenMarkers).toEqual([expectedJar]);
+        });
+        const stopping = second.server.stop();
+        releaseCleanup!();
+        await expect(starting).rejects.toThrow('Server startup was stopped.');
+        await stopping;
+        expect(second.launches).toHaveLength(0);
+        expect(second.server.status).toBe('stopped');
+    });
 });
 
 describe('findFreePort', () => {

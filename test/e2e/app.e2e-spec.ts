@@ -437,7 +437,7 @@ test('does not offer simultaneous downloads in the settings and always runs thre
         await expect.poll(() => {
             return readSettings(userData).rateLimit;
         }).toBe('2M');
-        expect(readSettings(userData).maxConcurrent).toBe(3);
+        expect(readSettings(userData)).not.toHaveProperty('maxConcurrent');
     } finally {
         await stale.app.close();
         rmSync(resolve(stale.userData, '..'), { recursive: true, force: true });
@@ -756,6 +756,41 @@ test('shows the error on the link row for an invalid URL, keeps it for editing a
     await expect(page.getByRole('alert')).toHaveCount(0);
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
     await expectDownloadsComplete(page);
+});
+
+test('rejects a link that is already running or paused in the queue and accepts it once cancelled', async () => {
+    const { page } = session;
+    await submitUrl(page, 'https://example.com/slow');
+    const card = page.getByTestId('job-card');
+    await expect(card).toHaveCount(1);
+    await expect(card.locator('.badge')).toHaveText('DOWNLOADING');
+
+    await submitUrl(page, 'https://example.com/slow');
+    await expect(page.getByRole('alert').filter({ hasText: 'This link is already in the queue.' })).toBeVisible();
+    await expect(page.getByLabel('Link 1', { exact: true })).toHaveValue('https://example.com/slow');
+    await expect(page.getByLabel('Link 1', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByTestId('job-card')).toHaveCount(1);
+
+    await card.getByRole('button', { name: 'PAUSE' }).click();
+    await expect(card.locator('.badge')).toHaveText('PAUSED');
+    await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'This link is already in the queue.' })).toBeVisible();
+    await expect(page.getByTestId('job-card')).toHaveCount(1);
+
+    await card.getByRole('button', { name: 'CANCEL' }).click();
+    await answerConfirm(page, 'Cancel this download?', 'CANCEL');
+    await expect(card.locator('.badge')).toHaveText('CANCELLED');
+
+    await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
+    await expect(page.getByTestId('job-card')).toHaveCount(2);
+    const active = page.getByTestId('job-card').filter({ has: page.locator('.badge', { hasText: 'DOWNLOADING' }) });
+    await expect(active).toHaveCount(1);
+    await active.getByRole('button', { name: 'CANCEL' }).click();
+    await answerConfirm(page, 'Cancel this download?', 'CANCEL');
+    await expect(page.locator('.badge', { hasText: 'CANCELLED' })).toHaveCount(2);
+    await page.getByRole('button', { name: 'CLEAR FINISHED' }).click();
+    await answerConfirm(page, 'Clear the finished ones?', 'CLEAR FINISHED');
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
 });
 
 test('explains an HTTP 403 in plain words, keeps the raw error on demand and does not offer FIND STREAM', async () => {

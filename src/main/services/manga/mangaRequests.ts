@@ -17,7 +17,7 @@ import type {
     ReadingRecord
 } from '@shared/manga';
 import { MAX_LOCAL_PAGES } from './localPages';
-import { MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES, MAX_GROUP_NAME_LENGTH } from '@shared/manga';
+import { LOCAL_MANGA_SOURCE_ID, MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES, MAX_GROUP_NAME_LENGTH } from '@shared/manga';
 import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
 
 export const MAX_TEXT = 500;
@@ -35,6 +35,10 @@ function isRecord(value: unknown): value is Raw {
 
 export function asId(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= Number.MAX_SAFE_INTEGER ? value : null;
+}
+
+export function asLocalOrRemoteId(value: unknown): number | null {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value !== 0 ? value : null;
 }
 
 export function asPageIndex(value: unknown): number | null {
@@ -107,10 +111,13 @@ export function asReadRequest(value: unknown): MangaReadRequest | null {
     if (!isRecord(value)) {
         return null;
     }
-    const chapterRemoteId = asId(value['chapterRemoteId']);
     const library = value['libraryChapterId'];
     const libraryChapterId = library === null || library === undefined ? null : asId(library);
-    if (chapterRemoteId === null || (libraryChapterId === null && library !== null && library !== undefined)) {
+    if (libraryChapterId === null && library !== null && library !== undefined) {
+        return null;
+    }
+    const chapterRemoteId = libraryChapterId !== null ? asLocalOrRemoteId(value['chapterRemoteId']) : asId(value['chapterRemoteId']);
+    if (chapterRemoteId === null) {
         return null;
     }
     return { chapterRemoteId, libraryChapterId };
@@ -299,9 +306,10 @@ export function asReadingRecord(value: unknown): ReadingRecord | null {
         return null;
     }
     const sourceId = text(value['sourceId'], MAX_TEXT);
-    const mangaRemoteId = asId(value['mangaRemoteId']);
+    const idReader = sourceId === LOCAL_MANGA_SOURCE_ID ? asLocalOrRemoteId : asId;
+    const mangaRemoteId = idReader(value['mangaRemoteId']);
     const title = text(value['title'], MAX_TEXT);
-    const chapterRemoteId = asId(value['chapterRemoteId']);
+    const chapterRemoteId = idReader(value['chapterRemoteId']);
     const page = value['page'];
     const pageCount = value['pageCount'];
     if (

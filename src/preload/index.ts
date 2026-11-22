@@ -172,6 +172,9 @@ const manga: CyberApi['manga'] = {
     migrateFolder: () => {
         return ipcRenderer.invoke(IPC.mangaMigrateFolder);
     },
+    importLibrary: () => {
+        return ipcRenderer.invoke(IPC.mangaImportLibrary);
+    },
     setSeries: (request) => {
         return ipcRenderer.invoke(IPC.mangaSetSeries, request);
     },
@@ -609,6 +612,9 @@ const api: CyberApi = {
     },
     importAnimeSubtitle: (episodeId) => {
         return ipcRenderer.invoke(IPC.animeSubtitleImport, episodeId);
+    },
+    deleteAnimeSubtitle: (episodeId, trackId) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleDelete, episodeId, trackId);
     },
     translateAnimeSubtitle: (request) => {
         return ipcRenderer.invoke(IPC.animeSubtitleTranslate, request);

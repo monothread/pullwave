@@ -21,7 +21,7 @@ const DOWNLOADS = '/home/me/Downloads';
 const REQUEST: AnimeDownloadRequest = { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3'] };
 
 function setup(
-    settings: Partial<Settings> = {},
+    settings: Partial<Settings> & { maxConcurrent?: number } = {},
     files: Record<string, number> = {},
     system: { platform?: NodeJS.Platform; downloads?: string; directories?: string[] } = {},
     site: { provider: string | null } = { provider: null },
@@ -32,13 +32,14 @@ function setup(
         withoutRemoveFile?: boolean;
     } = {}
 ) {
+    const { maxConcurrent, ...restSettings } = settings;
     const db = new AnimeDb(':memory:', () => {
         return 1000;
     });
     const downloads: Download[] = [];
     const updates: AnimeJob[] = [];
     const heldChanges: boolean[] = [];
-    const state = { settings: { ...DEFAULT_SETTINGS, ...settings }, libraryChanges: 0, entryChanges: [] as number[], directories: [] as string[], files: { ...files }, downloaded: [] as number[] };
+    const state = { settings: { ...DEFAULT_SETTINGS, ...restSettings }, libraryChanges: 0, entryChanges: [] as number[], directories: [] as string[], files: { ...files }, downloaded: [] as number[] };
     const ensureDirectory = vi.fn((path: string) => {
         state.directories.push(path);
     });
@@ -67,6 +68,7 @@ function setup(
         getSettings: () => {
             return state.settings;
         },
+        maxConcurrent,
         defaultDownloadDir: system.downloads ?? DOWNLOADS,
         platform: system.platform,
         sourceProvider: () => {
@@ -566,12 +568,12 @@ describe('AnimeDownloadQueue results', () => {
     });
 
     it('drops a job whose anime is gone before it starts', () => {
-        const { queue, db, downloads, state } = setup({ maxConcurrent: 0 });
+        const { queue, db, downloads } = setup({ maxConcurrent: 1 });
+        queue.pauseAll();
         queue.enqueue({ ...REQUEST, episodes: ['1'] });
         db.removeAnime(1);
-        state.settings = { ...state.settings, maxConcurrent: 1 };
 
-        queue.forget([]);
+        queue.resumeAll();
 
         expect(queue.list()).toEqual([]);
         expect(downloads).toEqual([]);
@@ -867,6 +869,100 @@ describe('AnimeDownloadQueue.redownload', () => {
 
         expect(downloads).toHaveLength(2);
         expect(downloads[1]?.options.episode).toBe('1');
+    });
+
+    it('defers deleting the existing file on replace until the download actually launches, and restores it if cancelled while queued', async () => {
+        const { queue, downloads, db, state, removeFile } = setup({ maxConcurrent: 1 }, { [FILE]: 4096 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        db.markAudioChecked(1, FILE, false);
+
+        queue.enqueue({ ...REQUEST, episodes: ['2'] });
+        queue.redownload(1);
+
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(state.files[FILE]).toBe(4096);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'queued' });
+
+        queue.cancel(1);
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(state.files[FILE]).toBe(4096);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
+    });
+
+    it('deletes the old file right before launch on replace and restores the DB record if deletion fails', async () => {
+        const failDelete = vi.fn(() => {
+            throw new Error('EACCES');
+        });
+        const { queue, downloads, updates, db, state } = setup({ maxConcurrent: 1 }, { [FILE]: 4096 }, {}, { provider: null }, { removeFile: failDelete });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        db.markAudioChecked(1, FILE, false);
+
+        queue.enqueue({ ...REQUEST, episodes: ['2'] });
+        queue.redownload(1);
+        expect(failDelete).not.toHaveBeenCalled();
+
+        const entriesBefore = state.entryChanges.length;
+        downloads[1]?.finish(doneAt('/dl/Anime/Season 1/Episode 2/ep2.mp4'));
+        await settleResults();
+
+        expect(failDelete).toHaveBeenCalledWith(FILE);
+        expect(downloads).toHaveLength(2);
+        expect(state.files[FILE]).toBe(4096);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
+        expect(state.entryChanges.slice(entriesBefore)).toContain(1);
+        expect(
+            updates
+                .filter((job) => {
+                    return job.episodeId === 1;
+                })
+                .at(-1)?.status
+        ).toBe('cancelled');
+    });
+
+    it('restores a queued replacement on forget and ignores redownload after shutdown', async () => {
+        const { queue, downloads, db, state, removeFile } = setup({ maxConcurrent: 1 }, { [FILE]: 4096 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        db.markAudioChecked(1, FILE, false);
+
+        queue.enqueue({ ...REQUEST, episodes: ['2'] });
+        queue.redownload(1);
+        queue.forget([1]);
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
+
+        const closing = queue.shutdown();
+        downloads[1]?.finish({ status: 'cancelled' });
+        await closing;
+
+        queue.redownload(1);
+        expect(state.files[FILE]).toBe(4096);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
+    });
+
+    it('restores a queued replacement on shutdown without deleting the existing file', async () => {
+        const { queue, downloads, db, state, removeFile } = setup({ maxConcurrent: 1 }, { [FILE]: 4096 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        db.markAudioChecked(1, FILE, false);
+
+        queue.enqueue({ ...REQUEST, episodes: ['2'] });
+        queue.redownload(1);
+        expect(removeFile).not.toHaveBeenCalled();
+
+        const closing = queue.shutdown();
+        downloads[1]?.finish({ status: 'cancelled' });
+        await closing;
+
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(state.files[FILE]).toBe(4096);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
     });
 });
 
@@ -1469,7 +1565,7 @@ describe('AnimeDownloadQueue series', () => {
 });
 
 describe('AnimeDownloadQueue pause and resume', () => {
-    async function pausedEpisode(settings: Partial<Settings> = { maxConcurrent: 1 }) {
+    async function pausedEpisode(settings: Partial<Settings> & { maxConcurrent?: number } = { maxConcurrent: 1 }) {
         const result = setup(settings);
         result.queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
         result.downloads[0]?.options.onProgress?.({ percent: 40, totalBytes: 100, speed: '1MiB/s', eta: '00:05' });
@@ -2214,7 +2310,7 @@ describe('AnimeDownloadQueue.addToLibrary', () => {
 });
 
 describe('AnimeDownloadQueue.downloadMissing', () => {
-    function library(settings: Partial<Settings> = {}, files: Record<string, number> = {}) {
+    function library(settings: Partial<Settings> & { maxConcurrent?: number } = {}, files: Record<string, number> = {}) {
         const context = setup(settings, files);
         context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
         return context;
@@ -2341,7 +2437,7 @@ describe('AnimeDownloadQueue.downloadMissing', () => {
 });
 
 describe('AnimeDownloadQueue.downloadEpisodes', () => {
-    function library(settings: Partial<Settings> = {}, files: Record<string, number> = {}) {
+    function library(settings: Partial<Settings> & { maxConcurrent?: number } = {}, files: Record<string, number> = {}) {
         const context = setup(settings, files);
         context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
         return context;

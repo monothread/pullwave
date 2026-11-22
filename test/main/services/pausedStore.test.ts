@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { keepInside, PausedStore, readExtras, readParts, readPausedDownload, type PausedDownload } from '@main/services/pausedStore';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 import { makeJob } from '../../helpers/mockApi';
@@ -8,10 +8,13 @@ afterEach(() => {
     cleanTempDirs();
 });
 
+const DL_DIR = resolve('dl');
+const OTHER_DIR = resolve('dl', 'other');
+
 const PAUSED: PausedDownload = {
-    job: makeJob({ id: 'job-1', url: 'https://example.com/video', status: 'paused', title: 'Some Video', percent: 42.5, speed: '', eta: '', createdAt: 1700000000000, pageUrl: 'https://example.com/page', customized: true }),
-    extras: { referer: 'https://example.com/', userAgent: 'Mozilla/5.0', title: 'Some Video', downloadDir: '/dl/other', ipFamily: 4, pageUrl: 'https://example.com/page', options: { maxResolution: '720' } },
-    outputPaths: ['/dl/Some Video [abc].mp4', '/dl/Some Video [abc].f137.mp4']
+    job: makeJob({ id: 'job-1', url: 'https://example.com/video', status: 'paused', title: 'Some Video', percent: 42.5, speed: '', eta: '', createdAt: 1700000000000, customized: true }),
+    extras: { downloadDir: OTHER_DIR, options: { maxResolution: '720' } },
+    outputPaths: [join(DL_DIR, 'Some Video [abc].mp4'), join(DL_DIR, 'Some Video [abc].f137.mp4')]
 };
 
 describe('readPausedDownload', () => {
@@ -52,10 +55,10 @@ describe('readPausedDownload', () => {
         expect(readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, percent: -4 } })?.job.percent).toBe(0);
     });
 
-    it('has no title or page when the file has none that is text', () => {
-        const read = readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, title: 5, pageUrl: null, customized: 'yes' } });
+    it('has no title when the file has none that is text', () => {
+        const read = readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, title: 5, customized: 'yes' } });
 
-        expect(read?.job).toMatchObject({ title: null, pageUrl: null, customized: false });
+        expect(read?.job).toMatchObject({ title: null, customized: false });
     });
 
     it('has no extras and no files when the file has none that is valid', () => {
@@ -200,18 +203,27 @@ describe('readExtras', () => {
         expect(readExtras(raw)).toEqual({});
     });
 
-    it('never reads the cookie or the part number, even when the file has them', () => {
-        expect(readExtras({ referer: 'https://example.com/', cookie: 'session=secret', resumedPart: 2 })).toEqual({ referer: 'https://example.com/' });
+    it('drops legacy stream-finder fields and resumedPart even when an older file has them', () => {
+        expect(
+            readExtras({
+                referer: 'https://example.com/',
+                userAgent: 'Mozilla/5.0',
+                title: 'Old Title',
+                pageUrl: 'https://example.com/page',
+                ipFamily: 4,
+                cookie: 'session=secret',
+                resumedPart: 2,
+                downloadDir: OTHER_DIR
+            })
+        ).toEqual({ downloadDir: OTHER_DIR });
     });
 
-    it('leaves out the fields that are not text, or are empty', () => {
-        expect(readExtras({ referer: 5, userAgent: '', title: null, pageUrl: ['x'], downloadDir: {} })).toEqual({});
+    it('leaves out fields that are not valid', () => {
+        expect(readExtras({ downloadDir: {} })).toEqual({});
     });
 
-    it('leaves out a text that is longer than any real one', () => {
-        const long = 'a'.repeat(4097);
-        expect(readExtras({ referer: long, userAgent: long, title: long, pageUrl: long })).toEqual({});
-        expect(readExtras({ title: 'a'.repeat(4096) })).toEqual({ title: 'a'.repeat(4096) });
+    it('leaves out a folder path that is longer than any real one', () => {
+        expect(readExtras({ downloadDir: join(DL_DIR, 'a'.repeat(4097)) })).toEqual({});
     });
 
     it.each([
@@ -223,15 +235,8 @@ describe('readExtras', () => {
     });
 
     it('keeps an absolute folder', () => {
-        expect(readExtras({ downloadDir: '/home/user/Videos' })).toEqual({ downloadDir: '/home/user/Videos' });
-    });
-
-    it.each([4, 6])('keeps the IP family %s', (ipFamily) => {
-        expect(readExtras({ ipFamily })).toEqual({ ipFamily });
-    });
-
-    it.each([[5], ['4'], [null], [0]])('leaves out the IP family %j', (ipFamily) => {
-        expect(readExtras({ ipFamily })).toEqual({});
+        const videosDir = resolve('home', 'user', 'Videos');
+        expect(readExtras({ downloadDir: videosDir })).toEqual({ downloadDir: videosDir });
     });
 
     it('keeps the options that are valid and leaves out the rest, as when a download is added', () => {
@@ -244,39 +249,48 @@ describe('readExtras', () => {
 });
 
 describe('keepInside', () => {
+    const inside = (name: string): string => {
+        return join(DL_DIR, name);
+    };
+
     it('keeps the files in the folder, in the folders below it, and in the same order', () => {
-        expect(keepInside(['/dl/b.mp4', '/dl/sub/a.mp4', '/dl/sub/deeper/c.mp4'], '/dl')).toEqual(['/dl/b.mp4', '/dl/sub/a.mp4', '/dl/sub/deeper/c.mp4']);
+        const files = [inside('b.mp4'), join(DL_DIR, 'sub', 'a.mp4'), join(DL_DIR, 'sub', 'deeper', 'c.mp4')];
+        expect(keepInside(files, DL_DIR)).toEqual(files);
     });
 
     it('drops the files that are somewhere else, including the ones that only start with the same name', () => {
-        expect(keepInside(['/etc/passwd', '/dlx/a.mp4', '/home/a.mp4', '/dl/a.mp4'], '/dl')).toEqual(['/dl/a.mp4']);
+        const validFile = inside('a.mp4');
+        expect(keepInside([resolve('etc', 'passwd'), join(`${DL_DIR}x`, 'a.mp4'), resolve('home', 'a.mp4'), validFile], DL_DIR)).toEqual([validFile]);
     });
 
     it('drops the files that leave the folder with ..', () => {
-        expect(keepInside(['/dl/../etc/a.mp4', '/dl/sub/../../etc/b.mp4', '/dl/sub/../c.mp4'], '/dl')).toEqual(['/dl/sub/../c.mp4']);
+        const stillInside = join(DL_DIR, 'sub', '..', 'c.mp4');
+        expect(keepInside([join(DL_DIR, '..', 'etc', 'a.mp4'), join(DL_DIR, 'sub', '..', '..', 'etc', 'b.mp4'), stillInside], DL_DIR)).toEqual([stillInside]);
     });
 
     it('drops a path that is not absolute, whatever the folder the process is in', () => {
-        expect(keepInside(['a.mp4', 'dl/a.mp4', './a.mp4'], '/dl')).toEqual([]);
+        expect(keepInside(['a.mp4', 'dl/a.mp4', './a.mp4'], DL_DIR)).toEqual([]);
     });
 
     it('drops the folder itself, which is not a file in it', () => {
-        expect(keepInside(['/dl', '/dl/'], '/dl')).toEqual([]);
+        expect(keepInside([DL_DIR, `${DL_DIR}/`], DL_DIR)).toEqual([]);
     });
 
     it('accepts a folder written with a trailing slash', () => {
-        expect(keepInside(['/dl/a.mp4'], '/dl/')).toEqual(['/dl/a.mp4']);
+        const validFile = inside('a.mp4');
+        expect(keepInside([validFile], `${DL_DIR}/`)).toEqual([validFile]);
     });
 
     it('has nothing for no files', () => {
-        expect(keepInside([], '/dl')).toEqual([]);
+        expect(keepInside([], DL_DIR)).toEqual([]);
     });
 });
 
 describe('readPausedDownload with edited extras and files', () => {
     it('reads the extras through their check and keeps the long file names out', () => {
-        const read = readPausedDownload({ job: PAUSED.job, extras: { referer: 'https://example.com/', cookie: 'secret', ipFamily: 9 }, outputPaths: ['/dl/a.mp4', 'a'.repeat(5000)] });
-        expect(read?.extras).toEqual({ referer: 'https://example.com/' });
-        expect(read?.outputPaths).toEqual(['/dl/a.mp4']);
+        const fileA = join(DL_DIR, 'a.mp4');
+        const read = readPausedDownload({ job: PAUSED.job, extras: { downloadDir: OTHER_DIR, referer: 'https://example.com/', cookie: 'secret' }, outputPaths: [fileA, 'a'.repeat(5000)] });
+        expect(read?.extras).toEqual({ downloadDir: OTHER_DIR });
+        expect(read?.outputPaths).toEqual([fileA]);
     });
 });

@@ -238,9 +238,23 @@ describe('mangaStore init', () => {
             });
         });
 
-        it('follows the migration of the folder as it goes', () => {
+        it('follows the migration of the folder while running and ignores late progress after completion', async () => {
+            let finish: (value: unknown) => void = () => {
+                return undefined;
+            };
+            mock.api.manga.migrateFolder.mockReturnValue(
+                new Promise((resolve) => {
+                    finish = resolve;
+                })
+            );
+            const running = state().migrateFolder();
             mock.emitMangaMigration({ done: 2, total: 9 });
             expect(state().migration).toEqual({ done: 2, total: 9 });
+            finish({ ok: true, chapters: 2, files: 9, destination: '/mnt/manga' });
+            await running;
+            expect(state().migration).toBeNull();
+            mock.emitMangaMigration({ done: 9, total: 9 });
+            expect(state().migration).toBeNull();
         });
 
         it('says how many chapters the hourly check added, and to which mangas', () => {
@@ -3124,5 +3138,191 @@ describe('mangaStore searching a manga in all the sources', () => {
         useMangaStore.setState({ view: 'browse' });
         await state().openManga(makeSummary());
         expect(state().selectionFrom).toBe('browse');
+    });
+});
+
+describe('mangaStore recordReading in-memory update and importLibrary', () => {
+    it('updates history in memory when recordReading returns the saved entry without re-fetching readingHistory', async () => {
+        const existing = {
+            id: 1,
+            sourceId: '5',
+            mangaRemoteId: 10,
+            title: 'First',
+            thumbnailUrl: null,
+            chapterRemoteId: 1,
+            chapterName: 'Ch 1',
+            chapterNumber: 1,
+            page: 1,
+            pageCount: 10,
+            readAt: 1000,
+            libraryMangaId: null
+        };
+        const updated = { ...existing, page: 2, readAt: 2000 };
+        useMangaStore.setState({ history: [existing] });
+        mock.api.manga.recordReading.mockResolvedValueOnce(updated);
+
+        await state().recordReading({
+            sourceId: '5',
+            mangaRemoteId: 10,
+            title: 'First',
+            thumbnailUrl: null,
+            chapterRemoteId: 1,
+            chapterName: 'Ch 1',
+            chapterNumber: 1,
+            page: 2,
+            pageCount: 10
+        });
+
+        expect(mock.api.manga.readingHistory).not.toHaveBeenCalled();
+        expect(state().history).toEqual([updated]);
+    });
+
+    it('falls back to loadHistory when history is empty and keeps entries sorted by readAt descending', async () => {
+        const first = {
+            id: 1,
+            sourceId: '5',
+            mangaRemoteId: 10,
+            title: 'First',
+            thumbnailUrl: null,
+            chapterRemoteId: 1,
+            chapterName: 'Ch 1',
+            chapterNumber: 1,
+            page: 1,
+            pageCount: 10,
+            readAt: 5000,
+            libraryMangaId: null
+        };
+        const older = { ...first, id: 2, mangaRemoteId: 20, title: 'Older', readAt: 3000 };
+        mock.api.manga.recordReading.mockResolvedValueOnce(first);
+        mock.api.manga.readingHistory.mockResolvedValueOnce([first]);
+        useMangaStore.setState({ history: [] });
+
+        await state().recordReading({
+            sourceId: '5',
+            mangaRemoteId: 10,
+            title: 'First',
+            thumbnailUrl: null,
+            chapterRemoteId: 1,
+            chapterName: 'Ch 1',
+            chapterNumber: 1,
+            page: 1,
+            pageCount: 10
+        });
+        expect(mock.api.manga.readingHistory).toHaveBeenCalledTimes(1);
+        expect(state().history).toEqual([first]);
+
+        mock.api.manga.recordReading.mockResolvedValueOnce(older);
+        await state().recordReading({
+            sourceId: '5',
+            mangaRemoteId: 20,
+            title: 'Older',
+            thumbnailUrl: null,
+            chapterRemoteId: 1,
+            chapterName: 'Ch 1',
+            chapterNumber: 1,
+            page: 1,
+            pageCount: 10
+        });
+        expect(state().history).toEqual([first, older]);
+    });
+
+    it('rejects a second concurrent migrateFolder call with busy without clearing active migration state', async () => {
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        await state().init();
+        let resolveFirst: ((value: { ok: true; chapters: number; files: number; destination: string }) => void) | null = null;
+        mock.api.manga.migrateFolder.mockImplementationOnce(() => {
+            return new Promise((resolve) => {
+                resolveFirst = resolve;
+            });
+        });
+
+        const first = state().migrateFolder();
+        mock.emitMangaMigration({ done: 1, total: 3 });
+        const second = await state().migrateFolder();
+        expect(second).toEqual({ ok: false, reason: 'busy' });
+        expect(state().migration).toEqual({ done: 1, total: 3 });
+
+        resolveFirst!({ ok: true, chapters: 3, files: 3, destination: '/moved' });
+        await first;
+        expect(state().migration).toBeNull();
+    });
+
+    it('skips remote details lookup when opening a local-only imported manga from the library', async () => {
+        useMangaStore.setState({
+            view: 'library',
+            library: [
+                {
+                    id: 1,
+                    sourceId: 'local',
+                    remoteId: -1,
+                    title: 'Offline Comic',
+                    thumbnailUrl: null,
+                    url: null,
+                    author: 'Anon',
+                    artist: null,
+                    description: null,
+                    genres: [],
+                    status: 'unknown',
+                    createdAt: 1000,
+                    series: null,
+                    season: null,
+                    seasonName: null,
+                    chapters: [
+                        {
+                            id: 10,
+                            mangaId: 1,
+                            remoteId: -1,
+                            name: 'Chapter 1',
+                            number: 1,
+                            dateUploaded: null,
+                            scanlator: null,
+                            sourceOrder: 1,
+                            status: 'done',
+                            pageCount: 12,
+                            filePath: '/manga/Offline Comic/Chapter 1.cbz',
+                            sizeBytes: 1000,
+                            error: null,
+                            downloadedAt: 1000,
+                            addedAt: null
+                        }
+                    ],
+                    groupIds: []
+                }
+            ]
+        });
+
+        await state().openManga({ sourceId: 'local', remoteId: -1, title: 'Offline Comic', thumbnailUrl: null });
+        expect(mock.api.manga.details).not.toHaveBeenCalled();
+        expect(state().selection?.status).toBe('ready');
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+    });
+
+    it('imports a manga library and reports done, outside, busy, or nothing when cancelled', async () => {
+        mock.api.manga.importLibrary.mockResolvedValueOnce({ ok: true, added: 2, relinked: 1, skipped: 3, ignored: 0 });
+        await state().importLibrary();
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        expect(useAppStore.getState().notice).toEqual({
+            kind: 'info',
+            message: 'IMPORT DONE: 2 ADDED · 1 POINTED TO A NEW PLACE · 3 ALREADY IN THE LIBRARY · 0 NOT RECOGNIZED'
+        });
+
+        mock.api.manga.importLibrary.mockResolvedValueOnce({ ok: false, reason: 'outside', folder: '/manga' });
+        await state().importLibrary();
+        expect(useAppStore.getState().notice).toEqual({
+            kind: 'error',
+            message: 'Only folders inside the manga folder can be imported: /manga'
+        });
+
+        mock.api.manga.importLibrary.mockResolvedValueOnce({ ok: false, reason: 'busy' });
+        await state().importLibrary();
+        expect(useAppStore.getState().notice).toEqual({
+            kind: 'error',
+            message: 'Wait until the current folder move finishes before importing.'
+        });
+
+        useAppStore.setState({ notice: null });
+        mock.api.manga.importLibrary.mockResolvedValueOnce({ ok: false, reason: 'cancelled' });
+        await state().importLibrary();
+        expect(useAppStore.getState().notice).toBeNull();
     });
 });

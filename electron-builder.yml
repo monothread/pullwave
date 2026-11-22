@@ -33,7 +33,8 @@ win:
       arch: x64
   icon: resources/icon.png
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
+  allowToChangeInstallationDirectory: true
   artifactName: pullwave-${version}-setup.${ext}
   deleteAppDataOnUninstall: false
