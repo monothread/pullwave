@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Video downloader, anime library &amp; player, and manga reader for Linux and Windows.</strong><br />
-  Console-inspired desktop app with 18 neon &amp; flat themes (Light &amp; Dark) and zero external setup.
+  Console-inspired desktop app with 19 neon &amp; flat themes (Light &amp; Dark) and zero external setup.
 </p>
 
 <p align="center">
@@ -49,7 +49,7 @@ Pullwave brings three workspaces together in a single desktop app:
 - **AI subtitle tools (BYOK):** translate existing subtitles or generate subtitles directly from episode audio using your own OpenAI, Claude, Gemini, DeepSeek, GLM, Kimi, or custom OpenAI-compatible API key.
 - **Full manga workflow:** install Mihon/Tachiyomi extension repositories, search across all installed sources at once, organize with custom groups, download as CBZ with `ComicInfo.xml`, and read in single-page, double-page, vertical scroll, or webtoon modes with auto-scroll.
 - **Responsive on every screen:** scales from a half-screen window up to **3440×1440 ultrawide** monitors and **1080×1920 vertical** displays, with keyboard and gamepad navigation.
-- **18 theme families & 5 languages:** 10 neon themes and 8 flat themes (each with Light and Dark variants plus System auto-switching), localized in **English, Português, Español, 中文, and 日本語**.
+- **19 theme families & 5 languages:** 11 neon themes and 8 flat themes (each with Light and Dark variants plus System auto-switching), localized in **English, Português, Español, 中文, and 日本語**.
 - **Self-contained:** downloads and updates its own bundled tools inside the app directory and checks for Pullwave updates automatically.
 
 ---
@@ -260,8 +260,8 @@ Read and collect manga from [Mihon/Tachiyomi](https://mihon.app) extensions on 6
 
 All settings save automatically. Open global **⚙ Settings** from the navigation rail to configure:
 
-- **Mode & Theme:** choose **System** (follows OS light/dark preference live), **Dark**, or **Light**, paired with **18 theme families** — each crafted in both Light and Dark versions:
-  - **Neon (10):** Cyberpunk, Synthwave, Terminal, Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Pink Noir, Cyber Gold, Ice Neon.
+- **Mode & Theme:** choose **System** (follows OS light/dark preference live), **Dark**, or **Light**, paired with **19 theme families** — each crafted in both Light and Dark versions:
+  - **Neon (11):** Cyberpunk, Synthwave, Terminal, Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Ultramagenta, Pink Noir, Cyber Gold, Ice Neon.
   - **Flat (8):** Default, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED, High Contrast, Sakura.
 - **Language:** Device (auto-detected), **English**, **Português**, **Español**, **中文**, or **日本語** — switches instantaneously.
 - **Audio & desktop integration:** adjustable UI sound volume, **System tray** (minimize to tray on close), **Start with the computer** (with optional start minimized to tray), and **App updates**.

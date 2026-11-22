@@ -146,7 +146,7 @@ yt-dlp prints `CYBERINFO|<is_live>|<file>` before downloading → `QueueManager.
 English, Portuguese, Spanish, Chinese and Japanese (D-029). The catalogs are in `src/shared/i18n/` (`en.ts` defines the keys, the other four are typed against it, so a missing key fails `tsc`). The renderer reads them through `useTranslator()`; the main process through `translateMain` (`src/main/services/language.ts`), which follows the saved `language` setting.
 
 ## Theme
-18 theme families (`THEME_FAMILIES` in `src/shared/constants.ts`, D-202), each with Light and Dark variants (36 themes total) plus `device` (`themeMode: 'device' | 'dark' | 'light'`, following the system): 10 neon families (cyberpunk, synthwave, neon-tokyo… with mono font, scanlines, glitch on titles, glowing borders) and 8 flat families (default, nord, dracula, sakura…). Errors in neon red.
+19 theme families (`THEME_FAMILIES` in `src/shared/constants.ts`, D-202), each with Light and Dark variants (38 themes total) plus `device` (`themeMode: 'device' | 'dark' | 'light'`, following the system): 11 neon families (cyberpunk, synthwave, neon-tokyo… with mono font, scanlines, glitch on titles, glowing borders) and 8 flat families (default, nord, dracula, sakura…). Errors in neon red.
 
 ## Tests
 - Unit: `test/main/**`, `test/renderer/**`, `test/shared/**` (CSS checks read `cyberpunk.css`, `themes.css` and `responsive.css` with `test/helpers/cssRules.ts`; `responsiveLayout.test.ts` covers the widths, the magnification and the columns); helpers in `test/helpers/` (`mockApi.ts`, `fakeChild.ts`, `tempDir.ts`).

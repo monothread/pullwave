@@ -876,6 +876,7 @@ describe('SettingsPanel theme', () => {
             ['acid-rain', 'Acid Rain (lime)'],
             ['amber-city', 'Amber City (orange and teal)'],
             ['ultraviolet', 'Ultraviolet (violet)'],
+            ['ultramagenta', 'Ultramagenta (magenta)'],
             ['pink-noir', 'Pink Noir (pink)'],
             ['cyber-gold', 'Cyber Gold (yellow)'],
             ['ice-neon', 'Ice Neon (icy cyan)'],

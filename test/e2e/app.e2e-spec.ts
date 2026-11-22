@@ -1597,6 +1597,7 @@ test.describe('themes', () => {
         ['acid-rain', 'acid-rain', 'acid-rain-light', 'rgb(3, 10, 8)', 'rgb(241, 248, 234)', 'neon'],
         ['amber-city', 'amber-city', 'amber-city-light', 'rgb(13, 8, 5)', 'rgb(251, 244, 236)', 'neon'],
         ['ultraviolet', 'ultraviolet', 'ultraviolet-light', 'rgb(10, 5, 24)', 'rgb(245, 240, 253)', 'neon'],
+        ['ultramagenta', 'ultramagenta', 'ultramagenta-light', 'rgb(20, 4, 24)', 'rgb(252, 240, 252)', 'neon'],
         ['pink-noir', 'pink-noir', 'pink-noir-light', 'rgb(5, 5, 5)', 'rgb(250, 247, 248)', 'neon'],
         ['cyber-gold', 'cyber-gold', 'cyber-gold-light', 'rgb(8, 6, 0)', 'rgb(251, 248, 233)', 'neon'],
         ['ice-neon', 'ice-neon', 'ice-neon-light', 'rgb(2, 17, 26)', 'rgb(238, 247, 251)', 'neon'],

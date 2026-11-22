@@ -356,6 +356,7 @@ export const zh: Messages = {
     'themeFamily.acid-rain': '酸雨（青柠）',
     'themeFamily.amber-city': '琥珀之城（橙青）',
     'themeFamily.ultraviolet': '紫外线（紫罗兰）',
+    'themeFamily.ultramagenta': '超洋红（洋红）',
     'themeFamily.pink-noir': '粉色黑色电影（粉色）',
     'themeFamily.cyber-gold': '赛博金（黄色）',
     'themeFamily.ice-neon': '冰霓虹（冰青色）',

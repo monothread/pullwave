@@ -356,6 +356,7 @@ export const es: Messages = {
     'themeFamily.acid-rain': 'Lluvia Ácida (lima)',
     'themeFamily.amber-city': 'Ciudad Ámbar (naranja y verde azulado)',
     'themeFamily.ultraviolet': 'Ultravioleta (violeta)',
+    'themeFamily.ultramagenta': 'Ultramagenta (magenta)',
     'themeFamily.pink-noir': 'Noir Rosa (rosa)',
     'themeFamily.cyber-gold': 'Oro Cyber (amarillo)',
     'themeFamily.ice-neon': 'Neón Hielo (cian helado)',

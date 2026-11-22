@@ -353,6 +353,7 @@ export const en = {
     'themeFamily.acid-rain': 'Acid Rain (lime)',
     'themeFamily.amber-city': 'Amber City (orange and teal)',
     'themeFamily.ultraviolet': 'Ultraviolet (violet)',
+    'themeFamily.ultramagenta': 'Ultramagenta (magenta)',
     'themeFamily.pink-noir': 'Pink Noir (pink)',
     'themeFamily.cyber-gold': 'Cyber Gold (yellow)',
     'themeFamily.ice-neon': 'Ice Neon (icy cyan)',

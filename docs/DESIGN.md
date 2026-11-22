@@ -51,7 +51,7 @@ The map was made from the components (`src/renderer/components`), the stores, th
 - UPDATES (new chapters as the cards of the library, with the chapter, when it was found, the origin and the state as badges, split by day) and HISTORY (the mangas read, as the cards of the library, with the chapter and the page it was left on, IN THE LIBRARY and REMOVE; split by day), downloads (three sources × three chapters, PAUSE ALL / RESUME ALL), EXTENSIONS (stores, install, update every extension, incompatible ones, about), SETTINGS (folder and migrate, CBZ or folder, FlareSolverr address, adult sources, language, look for new chapters, download them by themselves, the browser that opens a site, the health of the server and the helper).
 
 ### Global settings
-- Appearance and window: theme mode (System / Dark / Light) and 18 theme families (36 themes total), language (Device + 5), the volume of the sounds, close to tray, launch at login, start minimized.
+- Appearance and window: theme mode (System / Dark / Light) and 19 theme families (38 themes total), language (Device + 5), the volume of the sounds, close to tray, launch at login, start minimized.
 - App updates: check now, check on start. The disclaimer link.
 
 ## 2. Design system

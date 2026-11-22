@@ -21,6 +21,7 @@ const EXPECTED_FAMILIES = [
     { id: 'acid-rain', dark: 'acid-rain', light: 'acid-rain-light', style: 'neon' },
     { id: 'amber-city', dark: 'amber-city', light: 'amber-city-light', style: 'neon' },
     { id: 'ultraviolet', dark: 'ultraviolet', light: 'ultraviolet-light', style: 'neon' },
+    { id: 'ultramagenta', dark: 'ultramagenta', light: 'ultramagenta-light', style: 'neon' },
     { id: 'pink-noir', dark: 'pink-noir', light: 'pink-noir-light', style: 'neon' },
     { id: 'cyber-gold', dark: 'cyber-gold', light: 'cyber-gold-light', style: 'neon' },
     { id: 'ice-neon', dark: 'ice-neon', light: 'ice-neon-light', style: 'neon' },
@@ -34,10 +35,10 @@ const EXPECTED_FAMILIES = [
     { id: 'sakura', dark: 'sakura-dark', light: 'sakura', style: 'flat' }
 ] as const;
 
-const NEON_FAMILIES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon'];
+const NEON_FAMILIES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'ultramagenta', 'pink-noir', 'cyber-gold', 'ice-neon'];
 
 describe('the theme families', () => {
-    it('has eighteen families, each with its dark and its light theme, in the order of the list', () => {
+    it('has nineteen families, each with its dark and its light theme, in the order of the list', () => {
         expect(THEME_FAMILIES).toEqual(EXPECTED_FAMILIES);
         expect(THEME_FAMILY_IDS).toEqual(
             EXPECTED_FAMILIES.map((family) => {
@@ -46,7 +47,7 @@ describe('the theme families', () => {
         );
     });
 
-    it('lists the dark themes and the light themes in the order of the families, thirty-six themes in all, none of them twice', () => {
+    it('lists the dark themes and the light themes in the order of the families, thirty-eight themes in all, none of them twice', () => {
         expect(DARK_THEMES).toEqual(
             EXPECTED_FAMILIES.map((family) => {
                 return family.dark;
@@ -58,7 +59,7 @@ describe('the theme families', () => {
             })
         );
         expect(THEMES).toEqual([...DARK_THEMES, ...LIGHT_THEMES]);
-        expect(new Set(THEMES).size).toBe(36);
+        expect(new Set(THEMES).size).toBe(38);
     });
 
     it.each(EXPECTED_FAMILIES)('finds the $id family by its id, and finds it back from $dark and from $light', (family) => {

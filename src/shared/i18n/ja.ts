@@ -356,6 +356,7 @@ export const ja: Messages = {
     'themeFamily.acid-rain': '酸性雨（ライム）',
     'themeFamily.amber-city': 'アンバーシティ（オレンジとティール）',
     'themeFamily.ultraviolet': 'ウルトラバイオレット（バイオレット）',
+    'themeFamily.ultramagenta': 'ウルトラマゼンタ（マゼンタ）',
     'themeFamily.pink-noir': 'ピンクノワール（ピンク）',
     'themeFamily.cyber-gold': 'サイバーゴールド（イエロー）',
     'themeFamily.ice-neon': 'アイスネオン（アイシーシアン）',

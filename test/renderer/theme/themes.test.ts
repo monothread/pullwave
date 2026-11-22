@@ -196,18 +196,19 @@ describe('the neon variations of the cyberpunk theme', () => {
         { theme: 'acid-rain', main: '#b6ff00', second: '#00e5ff', bg: '#030a08', glow: '182, 255, 0' },
         { theme: 'amber-city', main: '#ff8a1f', second: '#19d3da', bg: '#0d0805', glow: '255, 138, 31' },
         { theme: 'ultraviolet', main: '#a96dff', second: '#ff3df2', bg: '#0a0518', glow: '169, 109, 255' },
+        { theme: 'ultramagenta', main: '#ff38f0', second: '#4deaff', bg: '#140418', glow: '255, 56, 240' },
         { theme: 'pink-noir', main: '#ff3d9a', second: '#ffe6f3', bg: '#050505', glow: '255, 61, 154' },
         { theme: 'cyber-gold', main: '#fcee0a', second: '#ff9100', bg: '#080600', glow: '252, 238, 10' },
         { theme: 'ice-neon', main: '#8ff3ff', second: '#6fb2ff', bg: '#02111a', glow: '143, 243, 255' }
     ] as const;
 
-    it('has seven of them, all of the neon style', () => {
+    it('has eight of them, all of the neon style', () => {
         expect(
             VARIATIONS.map((variation) => {
                 return THEME_STYLES[variation.theme];
             })
-        ).toEqual(['neon', 'neon', 'neon', 'neon', 'neon', 'neon', 'neon']);
-        expect(THEMES.slice(THEMES.indexOf('terminal') + 1, THEMES.indexOf('terminal') + 8)).toEqual(
+        ).toEqual(['neon', 'neon', 'neon', 'neon', 'neon', 'neon', 'neon', 'neon']);
+        expect(THEMES.slice(THEMES.indexOf('terminal') + 1, THEMES.indexOf('terminal') + 9)).toEqual(
             VARIATIONS.map((variation) => {
                 return variation.theme;
             })
@@ -260,8 +261,8 @@ describe('the light version of each dark theme', () => {
         return !['dark', 'sakura-dark', 'neon-tokyo'].includes(family.dark);
     });
 
-    it('creates fifteen of them, named after their dark theme', () => {
-        expect(NEW_FAMILIES).toHaveLength(15);
+    it('creates sixteen of them, named after their dark theme', () => {
+        expect(NEW_FAMILIES).toHaveLength(16);
         NEW_FAMILIES.forEach((family) => {
             expect(family.light).toBe(`${family.dark}-light`);
         });
