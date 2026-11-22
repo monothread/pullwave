@@ -83,6 +83,14 @@ export interface AppState {
 }
 
 const doneLinger = createDoneLinger<string>();
+const downloadFinishedListeners = new Set<(job: DownloadJob) => void>();
+
+export function onDownloadFinished(listener: (job: DownloadJob) => void): () => void {
+    downloadFinishedListeners.add(listener);
+    return () => {
+        downloadFinishedListeners.delete(listener);
+    };
+}
 
 function translateNow(settings: Settings, key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(settings.language))(key, params);
@@ -202,6 +210,9 @@ export const useAppStore = create<AppState>((set, get) => {
                     if (finishedNow) {
                         get().pushToast(translateNow(get().settings, 'notice.downloadDone', { title: job.title ?? job.url }));
                         useFxStore.getState().celebrate();
+                        downloadFinishedListeners.forEach((listener) => {
+                            listener(job);
+                        });
                         doneLinger.schedule(job.id, () => {
                             leaveQueue(job.id);
                         });

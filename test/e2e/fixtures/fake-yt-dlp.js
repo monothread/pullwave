@@ -273,7 +273,12 @@ if (url.includes('quiet')) {
 } else {
     progress(60);
     progress(100);
-    process.stdout.write(`CYBERFILE|${downloadDir}/${title} [abc].mp4\n`);
+    const finalPath = `${downloadDir}/${title} [abc].mp4`;
+    if (url.includes('writefile')) {
+        fs.mkdirSync(downloadDir, { recursive: true });
+        fs.writeFileSync(finalPath, 'fake-mp4');
+    }
+    process.stdout.write(`CYBERFILE|${finalPath}\n`);
     process.exit(0);
 }
 }

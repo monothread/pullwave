@@ -2,7 +2,7 @@
 import type { ExplorerEntry, ExplorerListing } from '@shared/explorer';
 import { useAppStore } from '@renderer/store/appStore';
 import { DEFAULT_EXPLORER_PREFS, EXPLORER_PREFS_STORAGE_KEY, readExplorerPrefs, useExplorerStore } from '@renderer/store/explorerStore';
-import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { installMockApi, makeJob, type MockApiHandle } from '../../helpers/mockApi';
 
 const VIDEO_1: ExplorerEntry = {
     path: '/downloads/alpha.mp4',
@@ -197,5 +197,133 @@ describe('explorerStore', () => {
 
         window.localStorage.setItem(EXPLORER_PREFS_STORAGE_KEY, '{not-json');
         expect(readExplorerPrefs()).toEqual(DEFAULT_EXPLORER_PREFS);
+    });
+
+    it('refreshes the explorer automatically when a video download finishes after explorer was loaded', async () => {
+        const cleanup = await useAppStore.getState().init();
+        try {
+            mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', []) });
+            await useExplorerStore.getState().open('/downloads');
+            expect(useExplorerStore.getState().entries).toEqual([]);
+            expect(mock.api.explorer.list).toHaveBeenCalledTimes(1);
+
+            mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [VIDEO_1]) });
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'running', title: 'alpha' }));
+            expect(mock.api.explorer.list).toHaveBeenCalledTimes(1);
+
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'done', title: 'alpha', filePath: VIDEO_1.path }));
+            await vi.waitFor(() => {
+                expect(mock.api.explorer.list).toHaveBeenCalledTimes(2);
+            });
+            expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads');
+            expect(useExplorerStore.getState().entries).toEqual([VIDEO_1]);
+
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'done', title: 'alpha', filePath: VIDEO_1.path }));
+            await Promise.resolve();
+            expect(mock.api.explorer.list).toHaveBeenCalledTimes(2);
+
+            mock.emitJobUpdate(makeJob({ id: 'dl-2', status: 'error', title: 'broken' }));
+            mock.emitJobUpdate(makeJob({ id: 'dl-3', status: 'cancelled', title: 'stopped' }));
+            await Promise.resolve();
+            expect(mock.api.explorer.list).toHaveBeenCalledTimes(2);
+        } finally {
+            cleanup();
+        }
+    });
+
+    it('does not call explorer.list on download completion when explorer was never loaded', async () => {
+        const cleanup = await useAppStore.getState().init();
+        try {
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'running', title: 'alpha' }));
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'done', title: 'alpha', filePath: VIDEO_1.path }));
+            await Promise.resolve();
+            expect(mock.api.explorer.list).not.toHaveBeenCalled();
+        } finally {
+            cleanup();
+        }
+    });
+
+    it('re-lists and preserves history if a download finishes while the initial explorer open is still in flight', async () => {
+        const cleanup = await useAppStore.getState().init();
+        try {
+            let resolveFirst: ((value: { ok: true; listing: ExplorerListing }) => void) | null = null;
+            mock.api.explorer.list.mockImplementationOnce(() => {
+                return new Promise((resolve) => {
+                    resolveFirst = resolve;
+                });
+            });
+            mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [VIDEO_1]) });
+
+            const initialOpen = useExplorerStore.getState().open();
+            expect(useExplorerStore.getState().loading).toBe(true);
+            expect(useExplorerStore.getState().loaded).toBe(false);
+
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'running', title: 'alpha' }));
+            mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'done', title: 'alpha', filePath: VIDEO_1.path }));
+
+            resolveFirst!({ ok: true, listing: makeListing('/downloads', []) });
+            await initialOpen;
+            await vi.waitFor(() => {
+                expect(useExplorerStore.getState().entries).toEqual([VIDEO_1]);
+            });
+
+            expect(useExplorerStore.getState().entries).toEqual([VIDEO_1]);
+            expect(useExplorerStore.getState().history).toEqual(['/downloads']);
+            expect(useExplorerStore.getState().historyIndex).toBe(0);
+        } finally {
+            cleanup();
+        }
+    });
+
+    it('queues a silent trailing refresh without preempting an in-flight goBack navigation or flashing loading', async () => {
+        const cleanup = await useAppStore.getState().init();
+        try {
+            mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', []) });
+            await useExplorerStore.getState().open('/downloads');
+            mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads/Clips', []) });
+            await useExplorerStore.getState().open('/downloads/Clips');
+
+            let resolveBack: ((value: { ok: true; listing: ExplorerListing }) => void) | null = null;
+            mock.api.explorer.list.mockImplementationOnce(() => {
+                return new Promise((resolve) => {
+                    resolveBack = resolve;
+                });
+            });
+            mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [VIDEO_1]) });
+
+            const goingBack = useExplorerStore.getState().goBack();
+            mock.emitJobUpdate(makeJob({ id: 'dl-back', status: 'running', title: 'alpha' }));
+            mock.emitJobUpdate(makeJob({ id: 'dl-back', status: 'done', title: 'alpha', filePath: VIDEO_1.path }));
+
+            resolveBack!({ ok: true, listing: makeListing('/downloads', []) });
+            await goingBack;
+            await vi.waitFor(() => {
+                expect(useExplorerStore.getState().entries).toEqual([VIDEO_1]);
+            });
+
+            expect(useExplorerStore.getState().directory).toBe('/downloads');
+            expect(useExplorerStore.getState().history).toEqual(['/downloads', '/downloads/Clips']);
+            expect(useExplorerStore.getState().historyIndex).toBe(0);
+
+            const loadingStates: boolean[] = [];
+            const unsubscribe = useExplorerStore.subscribe((state) => {
+                loadingStates.push(state.loading);
+            });
+            try {
+                mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [VIDEO_1, AUDIO_1]) });
+                mock.emitJobUpdate(makeJob({ id: 'dl-silent', status: 'running', title: 'beta' }));
+                mock.emitJobUpdate(makeJob({ id: 'dl-silent', status: 'done', title: 'beta', filePath: AUDIO_1.path }));
+                await vi.waitFor(() => {
+                    expect(useExplorerStore.getState().entries).toEqual([VIDEO_1, AUDIO_1]);
+                });
+                expect(loadingStates.every((flag) => {
+                    return flag === false;
+                })).toBe(true);
+            } finally {
+                unsubscribe();
+            }
+        } finally {
+            cleanup();
+        }
     });
 });

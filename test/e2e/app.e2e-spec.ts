@@ -292,6 +292,20 @@ test('downloads a video, says it is complete for five seconds, removes its card 
     await expect(item).toContainText('COMPLETE');
 });
 
+test('refreshes the explorer automatically when a video download finishes so the file is already listed upon entering the tab', async () => {
+    const { page } = session;
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'EXPLORER' }).click();
+    await expect(page.getByRole('region', { name: 'Media explorer' })).toBeVisible();
+    await expect(page.getByText('Fake Video [abc].mp4')).toHaveCount(0);
+
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'QUEUE' }).click();
+    await submitUrl(page, 'https://example.com/writefile');
+    await expect(page.locator('.toast--info .toast__message')).toHaveText('Download complete: Fake Video');
+
+    await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'EXPLORER' }).click();
+    await expect(page.getByText('Fake Video [abc].mp4')).toBeVisible();
+});
+
 test('shows a bar for the video and one for the audio, both in sight from the start, the video filling first and the audio after it', async () => {
     const { page } = session;
     await page.evaluate(() => {

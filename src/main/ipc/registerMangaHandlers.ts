@@ -638,7 +638,16 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     }
 
     ipcMain.handle(IPC.mangaRecordReading, (_event, record): ReadingEntry | null => {
-        const checked = asReadingRecord(record);
+        let checked = asReadingRecord(record);
+        if (checked === null) {
+            const withLocalChapter = asReadingRecord(record, true);
+            if (withLocalChapter !== null && withLocalChapter.chapterRemoteId < 0) {
+                const manga = db.findManga(withLocalChapter.sourceId, withLocalChapter.mangaRemoteId);
+                if (manga !== null && db.findChapter(manga.id, withLocalChapter.chapterRemoteId) !== null) {
+                    checked = withLocalChapter;
+                }
+            }
+        }
         if (checked === null) {
             return null;
         }

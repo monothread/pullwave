@@ -19,7 +19,7 @@ import {
 } from '../components/explorerHelpers';
 import { createTranslator } from '../i18n/catalogs';
 import { resolveAppLanguage } from '../i18n/language';
-import { useAppStore } from './appStore';
+import { onDownloadFinished, useAppStore } from './appStore';
 
 export const EXPLORER_PREFS_STORAGE_KEY = 'pullwave.explorer.prefs';
 
@@ -130,6 +130,7 @@ export interface ExplorerState {
     playing: ExplorerPlayerState | null;
     open: (directory?: string) => Promise<void>;
     refresh: () => Promise<void>;
+    refreshIfLoaded: () => Promise<void>;
     goBack: () => Promise<void>;
     goForward: () => Promise<void>;
     goUp: () => Promise<void>;
@@ -152,14 +153,24 @@ export interface ExplorerState {
 export const useExplorerStore = create<ExplorerState>((set, get) => {
     let requestSeq = 0;
     let playbackSeq = 0;
+    let inFlight = false;
+    let pendingRefresh = false;
 
-    async function loadDirectory(target: string | undefined, historyUpdate: 'push' | 'none' | { index: number }, keepHighlight = false): Promise<void> {
+    async function loadDirectory(
+        target: string | undefined,
+        historyUpdate: 'push' | 'none' | { index: number },
+        keepHighlight = false,
+        silent = false
+    ): Promise<void> {
         requestSeq += 1;
         const seq = requestSeq;
-        if (typeof historyUpdate === 'object') {
-            set({ loading: true, error: null, historyIndex: historyUpdate.index });
-        } else {
-            set({ loading: true, error: null });
+        inFlight = true;
+        if (!silent) {
+            if (typeof historyUpdate === 'object') {
+                set({ loading: true, error: null, historyIndex: historyUpdate.index });
+            } else {
+                set({ loading: true, error: null });
+            }
         }
         try {
             let response = await window.api.explorer.list(target);
@@ -170,7 +181,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
                 return;
             }
             if (!response.ok) {
-                set({ loading: false, loaded: true, error: response.reason });
+                if (!silent) {
+                    set({ loading: false, loaded: true, error: response.reason });
+                }
                 return;
             }
             const { listing } = response;
@@ -199,8 +212,18 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
                 highlightedPath: keepHighlight ? state.highlightedPath : null
             });
         } catch {
-            if (seq === requestSeq) {
+            if (seq === requestSeq && !silent) {
                 set({ loading: false, loaded: true, error: 'failed' });
+            }
+        } finally {
+            if (seq === requestSeq) {
+                inFlight = false;
+                if (pendingRefresh) {
+                    pendingRefresh = false;
+                    const current = get();
+                    const mode = current.history.length === 0 ? 'push' : 'none';
+                    void loadDirectory(current.directory.length > 0 ? current.directory : undefined, mode, true, true);
+                }
             }
         }
     }
@@ -229,6 +252,19 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
         refresh: async () => {
             const current = get().directory;
             await loadDirectory(current.length > 0 ? current : undefined, 'none', true);
+        },
+
+        refreshIfLoaded: async () => {
+            const { loaded, directory, history } = get();
+            if (inFlight) {
+                pendingRefresh = true;
+                return;
+            }
+            if (!loaded) {
+                return;
+            }
+            const historyMode = history.length === 0 ? 'push' : 'none';
+            await loadDirectory(directory.length > 0 ? directory : undefined, historyMode, true, true);
         },
 
         goBack: async () => {
@@ -510,4 +546,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             set({ playing: null });
         }
     };
+});
+
+onDownloadFinished(() => {
+    void useExplorerStore.getState().refreshIfLoaded();
 });

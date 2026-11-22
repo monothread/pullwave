@@ -178,15 +178,27 @@ export class SuwayomiServer {
         if (this.currentStatus === 'running' && this.address !== null) {
             return Promise.resolve(this.address);
         }
-        this.starting ??= this.start().finally(() => {
-            this.starting = null;
-        });
+        if (this.starting === null) {
+            const pending = this.start().finally(() => {
+                if (this.starting === pending) {
+                    this.starting = null;
+                }
+            });
+            this.starting = pending;
+        }
         return this.starting;
     }
 
     async stop(): Promise<void> {
         this.stopGeneration += 1;
+        const pending = this.starting;
+        this.starting = null;
         await this.endProcess();
+        if (pending !== null) {
+            await pending.catch(() => {
+                return undefined;
+            });
+        }
         this.setStatus('stopped');
     }
 

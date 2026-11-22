@@ -641,6 +641,12 @@ describe('SuwayomiServer log', () => {
         await stopping;
         expect(second.launches).toHaveLength(0);
         expect(second.server.status).toBe('stopped');
+
+        const restarted = await second.server.ensureRunning();
+        expect(restarted).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+        expect(second.launches).toHaveLength(1);
+        expect(second.server.status).toBe('running');
+        await second.server.stop();
     });
 });
 

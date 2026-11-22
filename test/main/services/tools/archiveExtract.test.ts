@@ -102,7 +102,9 @@ describe('extractArchive tar.gz', () => {
         expect(readFileSync(join(destination, 'jre', 'bin', 'java'), 'utf-8')).toBe('java');
         expect(readFileSync(join(destination, 'readme.txt'), 'utf-8')).toBe('hi');
         expect(existsSync(join(destination, 'electron'))).toBe(false);
-        expect(statSync(join(destination, 'jre', 'bin', 'java')).mode & 0o111).not.toBe(0);
+        if (process.platform !== 'win32') {
+            expect(statSync(join(destination, 'jre', 'bin', 'java')).mode & 0o111).not.toBe(0);
+        }
         expect(existsSync(join(destination, 'top'))).toBe(false);
     });
 
@@ -139,7 +141,9 @@ describe('extractArchive zip', () => {
         expect(readFileSync(join(destination, 'bin', 'app.jar'), 'utf-8')).toBe('jar');
         expect(readFileSync(join(destination, 'readme.txt'), 'utf-8')).toBe('hi');
         expect(existsSync(join(destination, 'electron'))).toBe(false);
-        expect(statSync(join(destination, 'run.sh')).mode & 0o111).not.toBe(0);
+        if (process.platform !== 'win32') {
+            expect(statSync(join(destination, 'run.sh')).mode & 0o111).not.toBe(0);
+        }
         expect(statSync(join(destination, 'readme.txt')).mode & 0o111).toBe(0);
     });
 
@@ -258,7 +262,9 @@ describe('extractArchive of a .tar.xz', () => {
         const destination = join(root, 'out');
         await extractArchive('tar.xz', archive, { destination, stripComponents: 1, exclude: ['doc'] });
         expect(readFileSync(join(destination, 'bin', 'ffmpeg'), 'utf-8')).toBe('binary');
-        expect(statSync(join(destination, 'bin', 'ffmpeg')).mode & 0o111).not.toBe(0);
+        if (process.platform !== 'win32') {
+            expect(statSync(join(destination, 'bin', 'ffmpeg')).mode & 0o111).not.toBe(0);
+        }
         expect(lstatSync(join(destination, 'lib', 'libx.so')).isSymbolicLink()).toBe(true);
         expect(readFileSync(join(destination, 'lib', 'libx.so'), 'utf-8')).toBe('library');
         expect(existsSync(join(destination, 'doc'))).toBe(false);

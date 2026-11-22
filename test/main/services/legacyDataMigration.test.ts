@@ -4,8 +4,8 @@ import { LEGACY_DATA_DIR_NAME, migrateLegacyUserData, type MigrationFiles } from
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
 const APP_DATA = '/config';
-const LEGACY_DIR = '/config/cyber-downloader';
-const USER_DATA = '/config/pullwave';
+const LEGACY_DIR = join(APP_DATA, 'cyber-downloader');
+const USER_DATA = join(APP_DATA, 'pullwave');
 
 afterEach(() => {
     cleanTempDirs();

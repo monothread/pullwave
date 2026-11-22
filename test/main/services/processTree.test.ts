@@ -54,7 +54,7 @@ describe('killProcessTree', () => {
         expect(kill).toHaveBeenCalledWith('SIGTERM');
     });
 
-    it('ends a real process group, children included', async () => {
+    it.skipIf(process.platform === 'win32')('ends a real process group, children included', async () => {
         const { spawn } = await import('node:child_process');
         const child = spawn(process.execPath, ['-e', 'const { spawn } = require("node:child_process"); spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit" }); setInterval(() => {}, 1000);'], {
             detached: true,

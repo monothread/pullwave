@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { commandLine } from '@main/services/errorDetails';
 import { openFfmpegLog, runFfmpegQuietly } from '@main/services/ffmpegExec';
 import { LogHub, processLogs } from '@main/services/logHub';
 import { createFakeLogWriter } from '../../helpers/fakeLogWriter';
@@ -72,7 +73,7 @@ describe('runFfmpegQuietly', () => {
                 return [line.stream, line.text];
             })
         ).toEqual([
-            ['command', `${NODE} -e process.stderr.write('hi\\n')`],
+            ['command', commandLine(NODE, ['-e', "process.stderr.write('hi\\n')"])],
             ['stderr', 'hi'],
             ['event', 'exited with code 0']
         ]);

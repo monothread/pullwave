@@ -144,6 +144,15 @@ describe('mangaMetadata', () => {
         expect(parseMangaMetadata(JSON.stringify({ ...metadata, sourceId: 'arbitrary-source' }))).toBeNull();
         expect(parseMangaMetadata(JSON.stringify({ ...metadata, remoteId: 0 }))).toBeNull();
         expect(parseMangaMetadata(JSON.stringify({ ...metadata, remoteId: -5 }))).toBeNull();
+
+        const withUnlistedLocalChapter = {
+            ...metadata,
+            chapters: [
+                ...metadata.chapters,
+                { fileName: 'Extra.cbz', remoteId: -1, name: 'Extra', number: 1.5, dateUploaded: null, scanlator: null, sourceOrder: 2, pageCount: 10, incomplete: false }
+            ]
+        };
+        expect(parseMangaMetadata(JSON.stringify(withUnlistedLocalChapter))?.chapters).toHaveLength(2);
     });
 
     it('writes, reads, and refreshes pullwave.json on the real filesystem', () => {

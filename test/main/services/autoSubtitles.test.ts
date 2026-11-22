@@ -458,7 +458,7 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
 
             expect(ask).toHaveBeenCalledTimes(1);
             expect(ask.mock.calls[0]?.[0]).toContain(language);
-            expect([...files.written.keys()]).toEqual([`/anime/Fake/Fake Episode 4.translated-${language}.vtt`]);
+            expect([...files.written.keys()]).toEqual([join('/anime', 'Fake', `Fake Episode 4.translated-${language}.vtt`)]);
         });
 
         it('never asks the provider when the source has the subtitle in that language', async () => {

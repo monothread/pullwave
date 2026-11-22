@@ -115,16 +115,20 @@ function validRemoteId(value: unknown, sourceId: string): number | null {
     return value >= 1 ? value : null;
 }
 
+function validChapterRemoteId(value: unknown): number | null {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value !== 0 ? value : null;
+}
+
 function nullableFiniteNumber(value: unknown): number | null {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function parseChapterMetadata(raw: unknown, sourceId: string): MangaChapterMetadata | null {
+function parseChapterMetadata(raw: unknown): MangaChapterMetadata | null {
     if (typeof raw !== 'object' || raw === null) {
         return null;
     }
     const { fileName, remoteId, name, number, dateUploaded, scanlator, sourceOrder, pageCount, incomplete } = raw as Record<string, unknown>;
-    const validId = validRemoteId(remoteId, sourceId);
+    const validId = validChapterRemoteId(remoteId);
     if (
         typeof fileName !== 'string' ||
         fileName.trim().length === 0 ||
@@ -238,7 +242,7 @@ export function parseMangaMetadata(content: string): MangaMetadata | null {
     const cleanedName = typeof seasonName === 'string' ? cleanSeasonName(seasonName) : null;
     const joined = cleanedSeries !== null && isValidSeason(season) ? { series: cleanedSeries, season, ...(cleanedName ? { seasonName: cleanedName } : {}) } : {};
     const parsedChapters = chapters.slice(0, MAX_METADATA_CHAPTERS).flatMap((chapter) => {
-        const parsed = parseChapterMetadata(chapter, checkedSourceId);
+        const parsed = parseChapterMetadata(chapter);
         return parsed === null ? [] : [parsed];
     });
     return {

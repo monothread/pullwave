@@ -102,7 +102,7 @@ describe('folderSize', () => {
         await expect(folderSize(join(root, 'file.bin'))).resolves.toBe(0);
     });
 
-    it('does not follow links to folders, and counts the link itself', async () => {
+    it.skipIf(process.platform === 'win32')('does not follow links to folders, and counts the link itself', async () => {
         const root = makeTempDir();
         const outside = makeTempDir();
         writeFileSync(join(outside, 'big.bin'), 'z'.repeat(1000));

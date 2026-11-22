@@ -301,15 +301,14 @@ export function asRetitleRequest(value: unknown): MangaRetitleRequest | null {
 
 export const MAX_PAGES = 5000;
 
-export function asReadingRecord(value: unknown): ReadingRecord | null {
+export function asReadingRecord(value: unknown, allowLocalChapter = false): ReadingRecord | null {
     if (!isRecord(value)) {
         return null;
     }
     const sourceId = text(value['sourceId'], MAX_TEXT);
-    const idReader = sourceId === LOCAL_MANGA_SOURCE_ID ? asLocalOrRemoteId : asId;
-    const mangaRemoteId = idReader(value['mangaRemoteId']);
+    const mangaRemoteId = sourceId === LOCAL_MANGA_SOURCE_ID ? asLocalOrRemoteId(value['mangaRemoteId']) : asId(value['mangaRemoteId']);
     const title = text(value['title'], MAX_TEXT);
-    const chapterRemoteId = idReader(value['chapterRemoteId']);
+    const chapterRemoteId = sourceId === LOCAL_MANGA_SOURCE_ID || allowLocalChapter ? asLocalOrRemoteId(value['chapterRemoteId']) : asId(value['chapterRemoteId']);
     const page = value['page'];
     const pageCount = value['pageCount'];
     if (

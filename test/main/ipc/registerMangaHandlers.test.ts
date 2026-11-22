@@ -1891,4 +1891,36 @@ describe('importing a manga library', () => {
             pageCount: 20
         });
     });
+
+    it('records reading progress for an unlisted local chapter (negative remoteId) belonging to a remote manga in the library, and rejects forged negative chapter IDs', () => {
+        const context = setup();
+        const manga = context.db.upsertManga({ sourceId: '123', remoteId: 7, title: 'One Piece', thumbnailUrl: null });
+        context.db.ensureChapter(manga.id, { remoteId: -1, name: 'Extra', number: 1.5, dateUploaded: null, scanlator: null, sourceOrder: 1 });
+
+        const saved = context.call(IPC.mangaRecordReading, {
+            sourceId: '123',
+            mangaRemoteId: 7,
+            title: 'One Piece',
+            thumbnailUrl: null,
+            chapterRemoteId: -1,
+            chapterName: 'Extra',
+            chapterNumber: 1.5,
+            page: 2,
+            pageCount: 10
+        }) as ReadingEntry | null;
+        expect(saved).toMatchObject({ sourceId: '123', mangaRemoteId: 7, chapterRemoteId: -1, page: 2 });
+
+        const forged = context.call(IPC.mangaRecordReading, {
+            sourceId: '123',
+            mangaRemoteId: 7,
+            title: 'One Piece',
+            thumbnailUrl: null,
+            chapterRemoteId: -999,
+            chapterName: 'Forged',
+            chapterNumber: 99,
+            page: 0,
+            pageCount: 5
+        });
+        expect(forged).toBeNull();
+    });
 });
