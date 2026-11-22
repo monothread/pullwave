@@ -1,4 +1,4 @@
-import { parseSegments, promptFor, segmentsToVtt, transcribeWithGemini, type GeminiSpeechRequest } from '@main/services/geminiSpeech';
+import { parseSegments, parseTimestamp, promptFor, segmentsToVtt, transcribeWithGemini, type GeminiSpeechRequest } from '@main/services/geminiSpeech';
 import type { LlmFetch } from '@main/services/llmProviders';
 
 interface Call {
@@ -57,37 +57,80 @@ describe('promptFor', () => {
         expect(prompt).not.toContain('Spanish');
     });
 
-    it.each(['translate', 'transcribe'] as const)('asks for a bare JSON list of lines with their times in seconds from the start of the audio, and for [] when nothing is said (%s)', (task) => {
+    it.each(['translate', 'transcribe'] as const)('asks for a bare JSON list of lines with MM:SS.mmm timestamps from the start of the audio, and for [] when nothing is said (%s)', (task) => {
         const prompt = promptFor(task, 'Japanese', 'Spanish');
         expect(prompt).toContain('Answer with only a JSON array, with no code fence and no comment.');
-        expect(prompt).toContain('{"start": number, "end": number, "text": string}');
-        expect(prompt).toContain('the seconds, counted from the start of this audio');
+        expect(prompt).toContain('{"start": "MM:SS.mmm", "end": "MM:SS.mmm", "text": string}');
+        expect(prompt).toContain('timestamps in MM:SS.mmm format counted from 00:00.000 at the start of this audio');
+        expect(prompt).toContain('seconds must be 00 to 59');
         expect(prompt).toContain('Do not describe sounds or music and do not write the names of who speaks. If nothing is said, answer [].');
+        expect(prompt).not.toContain('Context for names and terminology');
+    });
+
+    it('includes trimmed context for names and terminology when provided, and omits it when blank', () => {
+        const withContext = promptFor('translate', 'Japanese', 'English', '  Death Parade\nWelcome to Quindecim.  ');
+        expect(withContext).toContain('Context for names and terminology only (do not repeat these lines in the output):\nDeath Parade\nWelcome to Quindecim.');
+        expect(promptFor('translate', 'Japanese', 'English', '   ')).not.toContain('Context for names and terminology');
+    });
+});
+
+describe('parseTimestamp', () => {
+    it.each([
+        ['00:00', 0],
+        ['00:01', 1],
+        ['01:23', 83],
+        ['02:59', 179],
+        ['00:01.5', 1.5],
+        ['00:01.05', 1.05],
+        ['01:23.456', 83.456],
+        ['  02:05.25  ', 125.25],
+        ['00:02:58', 178],
+        ['01:02:03.250', 3723.25]
+    ])('reads "%s" as %d seconds', (raw, expected) => {
+        expect(parseTimestamp(raw)).toBeCloseTo(expected, 6);
+    });
+
+    it.each([
+        ['seconds of 60', '00:60'],
+        ['base-10 overflowed seconds', '00:102'],
+        ['decimal seconds >= 60', '01:75.500'],
+        ['HH:MM:SS seconds >= 60', '00:00:60'],
+        ['HH:MM:SS minutes >= 60', '00:60:00'],
+        ['bare integer seconds string', '102'],
+        ['MM.SS decimal string', '1.24'],
+        ['negative timestamp', '-00:01.000'],
+        ['empty string', ''],
+        ['non-time text', 'soon'],
+        ['number value', 1],
+        ['null value', null],
+        ['undefined value', undefined]
+    ])('rejects %s', (_name, value) => {
+        expect(parseTimestamp(value)).toBeNull();
     });
 });
 
 describe('parseSegments', () => {
-    it('reads a list of lines with their times', () => {
-        expect(parseSegments('[{"start":1,"end":3.5,"text":"Hola"},{"start":4,"end":6,"text":"Adiós"}]')).toEqual([
+    it('reads a list of lines with their MM:SS.mmm times', () => {
+        expect(parseSegments('[{"start":"00:01.000","end":"00:03.500","text":"Hola"},{"start":"01:04","end":"01:06.25","text":"Adiós"}]')).toEqual([
             { start: 1, end: 3.5, text: 'Hola' },
-            { start: 4, end: 6, text: 'Adiós' }
+            { start: 64, end: 66.25, text: 'Adiós' }
         ]);
     });
 
     it.each([
-        ['a code fence with the language', '```json\n[{"start":1,"end":2,"text":"a"}]\n```'],
-        ['a code fence without it', '```\n[{"start":1,"end":2,"text":"a"}]\n```'],
-        ['spaces around it', '  \n[{"start":1,"end":2,"text":"a"}]\n  ']
+        ['a code fence with the language', '```json\n[{"start":"00:01.000","end":"00:02.000","text":"a"}]\n```'],
+        ['a code fence without it', '```\n[{"start":"00:01.000","end":"00:02.000","text":"a"}]\n```'],
+        ['spaces around it', '  \n[{"start":"00:01.000","end":"00:02.000","text":"a"}]\n  ']
     ])('reads a list inside %s', (_name, text) => {
         expect(parseSegments(text)).toEqual([{ start: 1, end: 2, text: 'a' }]);
     });
 
     it('trims what is said, keeps the line break inside it and drops the blank lines, which would end the cue', () => {
-        expect(parseSegments('[{"start":1,"end":2,"text":"  one\\n\\n\\ntwo  "}]')).toEqual([{ start: 1, end: 2, text: 'one\ntwo' }]);
+        expect(parseSegments('[{"start":"00:01.000","end":"00:02.000","text":"  one\\n\\n\\ntwo  "}]')).toEqual([{ start: 1, end: 2, text: 'one\ntwo' }]);
     });
 
     it('leaves out the lines with nothing said', () => {
-        expect(parseSegments('[{"start":1,"end":2,"text":"  "},{"start":3,"end":4,"text":"b"}]')).toEqual([{ start: 3, end: 4, text: 'b' }]);
+        expect(parseSegments('[{"start":"00:01.000","end":"00:02.000","text":"  "},{"start":"00:03.000","end":"00:04.000","text":"b"}]')).toEqual([{ start: 3, end: 4, text: 'b' }]);
     });
 
     it('gives an empty list for an empty list', () => {
@@ -98,7 +141,7 @@ describe('parseSegments', () => {
     it('clamps end times to maxSeconds and drops cues starting at or after maxSeconds', () => {
         expect(
             parseSegments(
-                '[{"start":1,"end":3,"text":"ok"},{"start":178,"end":185,"text":"edge"},{"start":180,"end":184,"text":"beyond"},{"start":900,"end":905,"text":"hallucinated"}]',
+                '[{"start":"00:01.000","end":"00:03.000","text":"ok"},{"start":"02:58.000","end":"03:05.000","text":"edge"},{"start":"03:00.000","end":"03:04.000","text":"beyond"},{"start":"15:00.000","end":"15:05.000","text":"hallucinated"}]',
                 180
             )
         ).toEqual([
@@ -108,22 +151,24 @@ describe('parseSegments', () => {
     });
 
     it('gives null when every non-empty cue starts at or after maxSeconds', () => {
-        expect(parseSegments('[{"start":180,"end":185,"text":"late"},{"start":200,"end":205,"text":"later"}]', 180)).toBeNull();
+        expect(parseSegments('[{"start":"03:00.000","end":"03:05.000","text":"late"},{"start":"03:20.000","end":"03:25.000","text":"later"}]', 180)).toBeNull();
     });
 
     it.each([
         ['text that is not JSON', 'Here are the subtitles'],
-        ['an object', '{"start":1,"end":2,"text":"a"}'],
+        ['an object', '{"start":"00:01.000","end":"00:02.000","text":"a"}'],
         ['nothing', ''],
         ['a list of texts', '["a","b"]'],
-        ['a line with no text', '[{"start":1,"end":2}]'],
-        ['a line with no start', '[{"end":2,"text":"a"}]'],
-        ['a start that is a text', '[{"start":"1","end":2,"text":"a"}]'],
-        ['a text that is a number', '[{"start":1,"end":2,"text":5}]'],
-        ['a line that ends where it starts', '[{"start":2,"end":2,"text":"a"}]'],
-        ['a line that ends before it starts', '[{"start":3,"end":2,"text":"a"}]'],
-        ['a start before the beginning', '[{"start":-1,"end":2,"text":"a"}]'],
-        ['a good line followed by a bad one', '[{"start":1,"end":2,"text":"a"},{"start":"x","end":2,"text":"b"}]']
+        ['a line with no text', '[{"start":"00:01.000","end":"00:02.000"}]'],
+        ['a line with no start', '[{"end":"00:02.000","text":"a"}]'],
+        ['a start that is a number', '[{"start":1,"end":"00:02.000","text":"a"}]'],
+        ['a start with seconds >= 60', '[{"start":"00:102","end":"00:105","text":"a"}]'],
+        ['a bare numeric string start', '[{"start":"1.24","end":"1.26","text":"a"}]'],
+        ['a text that is a number', '[{"start":"00:01.000","end":"00:02.000","text":5}]'],
+        ['a line that ends where it starts', '[{"start":"00:02.000","end":"00:02.000","text":"a"}]'],
+        ['a line that ends before it starts', '[{"start":"00:03.000","end":"00:02.000","text":"a"}]'],
+        ['a start before the beginning', '[{"start":"-00:01.000","end":"00:02.000","text":"a"}]'],
+        ['a good line followed by a bad one', '[{"start":"00:01.000","end":"00:02.000","text":"a"},{"start":"x","end":"00:02.000","text":"b"}]']
     ])('gives null for %s', (_name, text) => {
         expect(parseSegments(text)).toBeNull();
     });
@@ -168,8 +213,8 @@ describe('transcribeWithGemini: the request', () => {
                     items: {
                         type: 'OBJECT',
                         properties: {
-                            start: { type: 'NUMBER' },
-                            end: { type: 'NUMBER' },
+                            start: { type: 'STRING' },
+                            end: { type: 'STRING' },
                             text: { type: 'STRING' }
                         },
                         required: ['start', 'end', 'text']
@@ -177,6 +222,13 @@ describe('transcribeWithGemini: the request', () => {
                 }
             }
         });
+    });
+
+    it('includes context in the prompt when provided', async () => {
+        const { fetchImpl, calls } = fakeFetch(answerOf('[]'));
+        await transcribeWithGemini({ ...BASE, context: 'Death Parade\nWelcome to Quindecim.' }, fetchImpl);
+        const body = JSON.parse(calls[0]?.init.body as string) as { contents: Array<{ parts: Array<{ text?: string }> }> };
+        expect(body.contents[0]?.parts[0]?.text).toBe(promptFor('translate', 'Japanese', 'Portuguese (Brazil)', 'Death Parade\nWelcome to Quindecim.'));
     });
 
     it('strips a leading models/ prefix from the model name before encoding it in the address', async () => {
@@ -217,12 +269,12 @@ describe('transcribeWithGemini: the request', () => {
 
 describe('transcribeWithGemini: the answer', () => {
     it('gives the lines of the answer as a WebVTT subtitle', async () => {
-        const result = await transcribeWithGemini(BASE, fakeFetch(answerOf('[{"start":1,"end":3,"text":"Olá"},{"start":4.5,"end":6,"text":"Tchau"}]')).fetchImpl);
+        const result = await transcribeWithGemini(BASE, fakeFetch(answerOf('[{"start":"00:01.000","end":"00:03.000","text":"Olá"},{"start":"00:04.500","end":"00:06.000","text":"Tchau"}]')).fetchImpl);
         expect(result).toEqual({ ok: true, text: 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nOlá\n\n00:00:04.500 --> 00:00:06.000\nTchau\n' });
     });
 
     it('puts together the texts of the parts of the answer, and takes a list inside a code fence', async () => {
-        const result = await transcribeWithGemini(BASE, fakeFetch(answerOf('```json\n[{"start":1,', '"end":3,"text":"Olá"}]\n```')).fetchImpl);
+        const result = await transcribeWithGemini(BASE, fakeFetch(answerOf('```json\n[{"start":"00:01.000",', '"end":"00:03.000","text":"Olá"}]\n```')).fetchImpl);
         expect(result).toEqual({ ok: true, text: 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nOlá\n' });
     });
 
@@ -234,7 +286,7 @@ describe('transcribeWithGemini: the answer', () => {
                         content: {
                             parts: [
                                 { text: 'Let me think about this audio...', thought: true },
-                                { text: '[{"start":1,"end":3,"text":"Olá"}]', thought: false }
+                                { text: '[{"start":"00:01.000","end":"00:03.000","text":"Olá"}]', thought: false }
                             ]
                         }
                     }
@@ -249,7 +301,7 @@ describe('transcribeWithGemini: the answer', () => {
     });
 
     it('rejects a response that only contains thought parts', async () => {
-        const body = JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"start":1,"end":3,"text":"Olá"}]', thought: true }] } }] });
+        const body = JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"start":"00:01.000","end":"00:03.000","text":"Olá"}]', thought: true }] } }] });
         expect(await errorOf(new Response(body, { status: 200 }))).toEqual({
             code: 'BAD_RESPONSE',
             raw: `The answer is not a list of subtitle lines with times: ${body}`
@@ -259,13 +311,13 @@ describe('transcribeWithGemini: the answer', () => {
     it('applies maxSeconds to clamp end times and drop cues past the part length', async () => {
         const result = await transcribeWithGemini(
             { ...BASE, maxSeconds: 180 },
-            fakeFetch(answerOf('[{"start":178,"end":185,"text":"Fim"},{"start":200,"end":205,"text":"Fora"}]')).fetchImpl
+            fakeFetch(answerOf('[{"start":"02:58.000","end":"03:05.000","text":"Fim"},{"start":"03:20.000","end":"03:25.000","text":"Fora"}]')).fetchImpl
         );
         expect(result).toEqual({ ok: true, text: 'WEBVTT\n\n00:02:58.000 --> 00:03:00.000\nFim\n' });
     });
 
     it('returns BAD_RESPONSE when every cue starts at or after maxSeconds', async () => {
-        const body = JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"start":180,"end":185,"text":"Fora"}]' }] } }] });
+        const body = JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"start":"03:00.000","end":"03:05.000","text":"Fora"}]' }] } }] });
         expect(await errorOf(new Response(body, { status: 200 }), { ...BASE, maxSeconds: 180 })).toEqual({
             code: 'BAD_RESPONSE',
             raw: `The answer is not a list of subtitle lines with times: ${body}`

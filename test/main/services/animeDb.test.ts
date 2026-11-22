@@ -2506,6 +2506,15 @@ describe('AnimeDb the releases of the anime', () => {
         db.setAiringOverride(999, 'complete');
 
         expect(db.list()[0]?.airing).toEqual({ status: null, override: null, complete: false });
+        expect(db.getAnilistId(999)).toBeNull();
+    });
+
+    it('reads the stored anilist_id for an anime and returns null before it is matched', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        expect(db.getAnilistId(anime.id)).toBeNull();
+        db.saveAiring(anime.id, 20, 'finished');
+        expect(db.getAnilistId(anime.id)).toBe(20);
     });
 
     it('reads a value it does not know as nothing said', () => {

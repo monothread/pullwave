@@ -72,6 +72,24 @@ describe('systemPromptFor', () => {
     it('says the lines were written from the audio of a video when the series has no name', () => {
         expect(systemPromptFor('Spanish', { title: null })).toBe([...BASE_PROMPT.slice(0, 2), 'The lines were written from the audio of a video.', ...RECOGNIZED, ...BASE_PROMPT.slice(2)].join(' '));
     });
+
+    it('includes the series reference when AnimeSubtitleContext is provided for both direct and speech-recognized translations', () => {
+        const seriesContext = {
+            title: 'Death Parade',
+            nativeTitle: 'デス・パレード',
+            synopsis: 'Souls are judged at Quindecim.',
+            characters: [{ full: 'Decim', native: 'デキム' }]
+        };
+        const reference = 'Series reference (use these official spellings for names and terminology):\nSeries: Death Parade (デス・パレード)\nPremise: Souls are judged at Quindecim.\nCharacters: Decim (デキム)';
+        expect(systemPromptFor('Spanish', undefined, seriesContext)).toBe([...BASE_PROMPT.slice(0, 2), reference, ...BASE_PROMPT.slice(2)].join(' '));
+        expect(systemPromptFor('Spanish', { title: 'Death Parade' }, seriesContext)).toBe([
+            ...BASE_PROMPT.slice(0, 2),
+            'The lines were written from the audio of the series "Death Parade".',
+            ...RECOGNIZED,
+            reference,
+            ...BASE_PROMPT.slice(2)
+        ].join(' '));
+    });
 });
 
 describe('splitIntoBatches', () => {

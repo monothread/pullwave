@@ -4564,7 +4564,19 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         key: string | undefined;
         body: {
             contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>;
-            generationConfig?: { responseMimeType?: string; responseSchema?: { type?: string } };
+            generationConfig?: {
+                responseMimeType?: string;
+                responseSchema?: {
+                    type?: string;
+                    items?: {
+                        properties?: {
+                            start?: { type?: string };
+                            end?: { type?: string };
+                            text?: { type?: string };
+                        };
+                    };
+                };
+            };
         };
     }
 
@@ -4599,7 +4611,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
                 const path = request.url ?? '';
                 if (path.startsWith('/v1beta/models/') && path.endsWith(':generateContent')) {
                     geminis.push({ path, key: request.headers['x-goog-api-key'] as string | undefined, body: JSON.parse(body.toString('utf-8')) as GeminiRequest['body'] });
-                    const segments = `[{"start":${geminis.length === 1 ? 1 : 2},"end":${geminis.length === 1 ? 3 : 4},"text":"Parte ${geminis.length}"}]`;
+                    const segments = `[{"start":"${geminis.length === 1 ? '00:01.000' : '00:02.000'}","end":"${geminis.length === 1 ? '00:03.000' : '00:04.000'}","text":"Parte ${geminis.length}"}]`;
                     response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ candidates: [{ content: { parts: [{ text: segments }] } }] }));
                     return;
                 }
@@ -5029,13 +5041,18 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN Portuguese (Brazil).');
 
         expect(geminis).toHaveLength(4);
-        geminis.forEach((request) => {
+        geminis.forEach((request, index) => {
             expect(request.path).toBe('/v1beta/models/gem-model:generateContent');
             expect(request.key).toBe('gem-key');
             expect(request.body.generationConfig?.responseMimeType).toBe('application/json');
             expect(request.body.generationConfig?.responseSchema?.type).toBe('ARRAY');
+            expect(request.body.generationConfig?.responseSchema?.items?.properties?.start?.type).toBe('STRING');
+            expect(request.body.generationConfig?.responseSchema?.items?.properties?.end?.type).toBe('STRING');
             const [text, audio] = request.body.contents[0]?.parts ?? [];
             expect(text?.text).toContain('The audio is spoken in Japanese. Write what is said translated into Portuguese (Brazil).');
+            if (index > 0) {
+                expect(text?.text).toContain(`Parte ${index}`);
+            }
             expect(audio?.inlineData?.mimeType).toBe('audio/mp3');
             const first = Buffer.from(audio?.inlineData?.data ?? '', 'base64')[0];
             expect(first === 0x49 || first === 0xff).toBe(true);

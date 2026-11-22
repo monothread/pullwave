@@ -15,6 +15,7 @@ import { fallbackProviders } from './services/covers/coverChain';
 import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
 import { AnimeAiringService } from './services/animeAiring';
+import { AnimeSubtitleContextService, type AnimeSubtitleContext } from './services/animeSubtitleContext';
 import { AnimeUpdateChecker } from './services/animeUpdateChecker';
 import { AutoSubtitleTranslator } from './services/autoSubtitles';
 import { translationTargetOf } from '@shared/subtitleTarget';
@@ -72,6 +73,7 @@ export interface AnimeRuntimeOptions {
     getLlmToken?: (slot: LlmTokenSlot) => string | null;
     llmFetch?: LlmFetch;
     speechFetch?: LlmFetch;
+    contextFetch?: typeof fetch;
     runFfmpeg?: FfmpegRunner;
     audioFiles?: AudioFiles;
     translationSleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
@@ -238,10 +240,24 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         const episode = db.getEpisode(episodeId);
         return episode && episode.status === 'done' ? episode.filePath : null;
     };
+    const subtitleContext = new AnimeSubtitleContextService({
+        url: options.scheduleUrl,
+        fetchFn: options.contextFetch
+    });
     const seriesTitleOf = (episodeId: number): string | null => {
         const episode = db.getEpisode(episodeId);
         const anime = episode === null ? null : db.getAnime(episode.animeId);
         return anime === null ? null : (anime.series ?? anime.title);
+    };
+    const resolveSeriesContextOf = (episodeId: number): ((signal?: AbortSignal) => Promise<AnimeSubtitleContext | null>) => {
+        return (signal) => {
+            const episode = db.getEpisode(episodeId);
+            const anime = episode === null ? null : db.getAnime(episode.animeId);
+            if (anime === null) {
+                return Promise.resolve(null);
+            }
+            return subtitleContext.resolve({ title: anime.series ?? anime.title, anilistId: db.getAnilistId(anime.id) }, signal);
+        };
     };
     const llmAccess = (): LlmAccess => {
         const settings = options.getSettings();
@@ -277,7 +293,19 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             if (filePath === null) {
                 return Promise.resolve({ ok: false, reason: 'missing' });
             }
-            return translateEpisodeSubtitle(filePath, request, { llm: llmAccess, files: options.subtitleFiles, sleep: options.translationSleep, batches: translatedBatches }, onProgress, signal);
+            return translateEpisodeSubtitle(
+                filePath,
+                request,
+                {
+                    llm: llmAccess,
+                    files: options.subtitleFiles,
+                    sleep: options.translationSleep,
+                    batches: translatedBatches,
+                    resolveSeriesContext: resolveSeriesContextOf(request.episodeId)
+                },
+                onProgress,
+                signal
+            );
         },
         onJobUpdate: (job) => {
             options.send(IPC.eventSubtitleTranslation, job);
@@ -341,6 +369,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                         audioLanguage: input.audioLanguage,
                         language: input.language,
                         audio: input.audio,
+                        context: input.prompt,
                         maxSeconds: partSeconds,
                         signal: input.signal
                     }, options.speechFetch);
@@ -381,7 +410,22 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             if (filePath === null) {
                 return Promise.resolve({ ok: false, reason: 'missing' });
             }
-            return generateEpisodeSubtitle(filePath, { ...request, title: seriesTitleOf(request.episodeId) }, { speech: speechAccess, translation: llmAccess, ffmpeg: runFfmpeg, audio: options.audioFiles, files: options.subtitleFiles, sleep: options.translationSleep, batches: translatedBatches }, onProgress, signal);
+            return generateEpisodeSubtitle(
+                filePath,
+                { ...request, title: seriesTitleOf(request.episodeId) },
+                {
+                    speech: speechAccess,
+                    translation: llmAccess,
+                    ffmpeg: runFfmpeg,
+                    audio: options.audioFiles,
+                    files: options.subtitleFiles,
+                    sleep: options.translationSleep,
+                    batches: translatedBatches,
+                    resolveSeriesContext: resolveSeriesContextOf(request.episodeId)
+                },
+                onProgress,
+                signal
+            );
         },
         onJobUpdate: (job) => {
             options.send(IPC.eventSubtitleGeneration, job);

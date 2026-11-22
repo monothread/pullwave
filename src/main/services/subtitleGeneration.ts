@@ -11,6 +11,7 @@ import {
     type TranslationLanguage
 } from '@shared/anime';
 import type { LlmCompletionResult, SpeechTranslatesTo } from '@shared/llm';
+import { formatSeriesContext, type AnimeSubtitleContext } from './animeSubtitleContext';
 import { AUDIO_BYTES_PER_SECOND, decodeSpeechAudio, defaultAudioFiles, extractAudioParts, extractAudioPieces, probeAudio, type AudioFiles, type FfmpegRunner } from './audioExtractor';
 import type { SpeechTask } from './speechProviders';
 import { cutTimesOf, findSpeech, loudnessOf, pcmSeconds, piecesOf, type SpeechPiece } from './speechSegmenter';
@@ -21,6 +22,7 @@ import { formatVttTime, parseVtt, serializeVtt, shiftCues, type VttCue } from '.
 
 export const PIECE_STREAMS = 6;
 export const CONTEXT_PIECES = 2;
+export const PART_CONTEXT_LINES = 3;
 export const MAX_BAD_RESPONSE_RETRIES = 1;
 
 export interface SpeechInput {
@@ -46,12 +48,14 @@ export interface SubtitleGenerationDependencies {
     files?: SubtitleFileSystem;
     sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
     batches?: TranslatedBatches;
+    resolveSeriesContext?: (signal?: AbortSignal) => Promise<AnimeSubtitleContext | null>;
 }
 
 export interface GenerationRequest {
     audioLanguage: TranscriptionLanguage;
     language: TranslationLanguage;
     title: string | null;
+    seriesContext?: AnimeSubtitleContext | null;
 }
 
 export interface GenerationProgressExtra {
@@ -167,17 +171,42 @@ function inputOf(context: SendContext, audio: Uint8Array, fileName: string): Omi
     };
 }
 
-async function sendParts(paths: readonly string[], context: SendContext): Promise<PartsResult> {
+export function partPromptOf(title: string | null, previous: readonly string[], seriesContext?: AnimeSubtitleContext | null): string {
+    const header = seriesContext !== undefined && seriesContext !== null ? formatSeriesContext(seriesContext) : (title ?? '').trim();
+    return [
+        header,
+        ...previous.map((line) => {
+            return line.trim();
+        })
+    ]
+        .filter(isNotEmpty)
+        .join('\n');
+}
+
+async function sendParts(paths: readonly string[], context: SendContext & { title: string | null; seriesContext: AnimeSubtitleContext | null }): Promise<PartsResult> {
     const cues: VttCue[] = [];
     const partSeconds = context.partSeconds ?? SPEECH_PART_SECONDS;
+    let previous: string[] = [];
     let sentBytes = 0;
     context.report(0, paths.length, 0);
     for (const [index, path] of paths.entries()) {
-        const result = await askPart(inputOf(context, context.audio.read(path), `part-${index}.mp3`), context.access, context.dependencies, context.signal);
+        const baseInput = inputOf(context, context.audio.read(path), `part-${index}.mp3`);
+        const prompt = context.access.translatesTo === 'any' ? partPromptOf(context.title, previous, context.seriesContext) : '';
+        const input = prompt.length > 0 ? { ...baseInput, prompt } : baseInput;
+        const result = await askPart(input, context.access, context.dependencies, context.signal);
         if (!result.ok) {
             return { ok: false, response: responseOf(result), refused: index === 0 && result.error.code === 'BAD_RESPONSE' };
         }
-        cues.push(...shiftCues(parseVtt(result.text).cues, index * partSeconds));
+        const partCues = parseVtt(result.text).cues;
+        cues.push(...shiftCues(partCues, index * partSeconds));
+        if (partCues.length > 0) {
+            previous = [
+                ...previous,
+                ...partCues.slice(-PART_CONTEXT_LINES).map((cue) => {
+                    return cue.text;
+                })
+            ].slice(-PART_CONTEXT_LINES);
+        }
         sentBytes += context.audio.size(path);
         context.report(index + 1, paths.length, sentBytes);
     }
@@ -242,6 +271,7 @@ type Translated = { ok: true; cues: VttCue[] } | { ok: false; response: Subtitle
 async function translateCues(
     cues: readonly VttCue[],
     request: GenerationRequest,
+    seriesContext: AnimeSubtitleContext | null,
     translation: Extract<LlmAccess, { ok: true }>,
     dependencies: SubtitleGenerationDependencies,
     report: (done: number, total: number) => void,
@@ -261,7 +291,8 @@ async function translateCues(
             onProgress: report,
             batches: dependencies.batches
         },
-        { title: request.title }
+        { title: request.title },
+        seriesContext
     );
     if (!result.ok) {
         return { ok: false, response: result.error.code === 'CANCELLED' ? { ok: false, reason: 'cancelled' } : { ok: false, reason: 'failed', error: result.error } };
@@ -297,6 +328,7 @@ interface TranscribeContext {
     videoPath: string;
     directory: string;
     request: GenerationRequest;
+    seriesContext: Promise<AnimeSubtitleContext | null>;
     access: Extract<Access, { ok: true }>;
     plan: SubtitleGeneratePlan;
     dependencies: SubtitleGenerationDependencies;
@@ -337,20 +369,28 @@ async function transcribeInParts(context: TranscribeContext): Promise<Transcribe
     if (!parts.ok) {
         return { ok: false, response: { ok: false, reason: parts.reason } };
     }
+    const seriesContext = context.access.speech.translatesTo === 'any' ? await context.seriesContext : null;
+    if (isAborted(signal)) {
+        return { ok: false, response: { ok: false, reason: 'cancelled' } };
+    }
     let plan = context.plan;
     const totalBytes = totalBytesOf(parts.paths, audio);
     const send = (task: SpeechTask): Promise<PartsResult> => {
         return sendParts(
             parts.paths,
-            sendContextOf(
-                context,
-                task,
-                () => {
-                    return plan;
-                },
-                totalBytes,
-                partSeconds
-            )
+            {
+                ...sendContextOf(
+                    context,
+                    task,
+                    () => {
+                        return plan;
+                    },
+                    totalBytes,
+                    partSeconds
+                ),
+                title: context.request.title,
+                seriesContext
+            }
         );
     };
     let translation = context.access.translation;
@@ -441,8 +481,17 @@ export async function generateEpisodeSubtitle(
     }
     const directory = audio.makeDirectory();
     try {
+        const needsSeriesContext = access.speech.translatesTo === 'any' || access.plan !== 'transcribe';
+        const seriesContext =
+            request.seriesContext !== undefined
+                ? Promise.resolve(request.seriesContext)
+                : !needsSeriesContext || dependencies.resolveSeriesContext === undefined
+                    ? Promise.resolve(null)
+                    : dependencies.resolveSeriesContext(signal).catch(() => {
+                          return null;
+                      });
         onProgress(0, 1, { phase: 'extracting', plan: access.plan });
-        const context: TranscribeContext = { videoPath, directory, request, access, plan: access.plan, dependencies, audio, onProgress, signal };
+        const context: TranscribeContext = { videoPath, directory, request, seriesContext, access, plan: access.plan, dependencies, audio, onProgress, signal };
         const transcribed = access.speech.cutsAtPauses ? await transcribeAtPauses(context) : await transcribeInParts(context);
         if (!transcribed.ok) {
             return transcribed.response;
@@ -453,10 +502,15 @@ export async function generateEpisodeSubtitle(
         const { plan, translation } = transcribed;
         let cues = transcribed.cues;
         if (plan === 'transcribe-translate' && translation?.ok === true) {
+            const resolvedContext = await seriesContext;
+            if (isAborted(signal)) {
+                return { ok: false, reason: 'cancelled' };
+            }
             onProgress(0, cues.length, { phase: 'translating', plan });
             const translated = await translateCues(
                 cues,
                 request,
+                resolvedContext,
                 translation,
                 dependencies,
                 (done, total) => {

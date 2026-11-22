@@ -463,7 +463,14 @@ describe('createAnimeRuntime', () => {
                 let release: (response: Response) => void = () => {
                     return undefined;
                 };
+                let markStarted: () => void = () => {
+                    return undefined;
+                };
+                const started = new Promise<void>((resolve) => {
+                    markStarted = resolve;
+                });
                 const llmFetch = vi.fn(() => {
+                    markStarted();
                     return new Promise<Response>((resolve) => {
                         release = resolve;
                     });
@@ -471,12 +478,20 @@ describe('createAnimeRuntime', () => {
                 const { runtime, episode } = translating({}, 'sk-1', llmFetch);
                 const first = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
                 expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'German' })).toEqual({ ok: false, reason: 'busy' });
+                await started;
                 release(openAiAnswer());
                 expect(await first).toMatchObject({ ok: true });
             });
 
             it('cancels the translation of an episode, and the request to the provider with it', async () => {
+                let markStarted: () => void = () => {
+                    return undefined;
+                };
+                const started = new Promise<void>((resolve) => {
+                    markStarted = resolve;
+                });
                 const llmFetch = vi.fn((_url: string, init: RequestInit) => {
+                    markStarted();
                     return new Promise<Response>((_resolve, reject) => {
                         (init.signal as AbortSignal).addEventListener('abort', () => {
                             reject(new Error('aborted'));
@@ -485,14 +500,23 @@ describe('createAnimeRuntime', () => {
                 });
                 const { runtime, episode, folder, send } = translating({}, 'sk-1', llmFetch);
                 const answer = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                await started;
                 runtime?.handlers.subtitles.cancelTranslation(episode.id);
                 expect(await answer).toEqual({ ok: false, reason: 'cancelled' });
+                expect(llmFetch).toHaveBeenCalledTimes(1);
                 expect(existsSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'))).toBe(false);
                 expect(send.mock.calls.at(-1)).toEqual([IPC.eventSubtitleTranslation, { episodeId: episode.id, language: 'Spanish', status: 'cancelled', done: 0, total: 1, reason: 'cancelled' }]);
             });
 
             it('cancels all the translations when no episode is given', async () => {
+                let markStarted: () => void = () => {
+                    return undefined;
+                };
+                const started = new Promise<void>((resolve) => {
+                    markStarted = resolve;
+                });
                 const llmFetch = vi.fn((_url: string, init: RequestInit) => {
+                    markStarted();
                     return new Promise<Response>((_resolve, reject) => {
                         (init.signal as AbortSignal).addEventListener('abort', () => {
                             reject(new Error('aborted'));
@@ -501,8 +525,83 @@ describe('createAnimeRuntime', () => {
                 });
                 const { runtime, episode } = translating({}, 'sk-1', llmFetch);
                 const answer = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                await started;
                 runtime?.handlers.subtitles.cancelTranslation(null);
                 expect(await answer).toEqual({ ok: false, reason: 'cancelled' });
+                expect(llmFetch).toHaveBeenCalledTimes(1);
+            });
+
+            it('enriches subtitle translation prompts with AniList context by stored anilistId and falls back to title search when absent', async () => {
+                const anilistMedia = {
+                    title: { romaji: 'Naruto', english: 'Naruto', native: 'ナルト' },
+                    synonyms: [],
+                    description: 'A young ninja seeks recognition.',
+                    characters: { nodes: [{ name: { full: 'Naruto Uzumaki', native: 'うずまきナルト' } }] }
+                };
+                const llmFetchById = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const contextFetchById = vi.fn<typeof fetch>(async () => {
+                    return new Response(JSON.stringify({ data: { Media: anilistMedia } }), { status: 200 });
+                });
+                const firstDownload = downloaded({ 'Naruto Episode 1.vtt': SOURCE });
+                const runtimeById = open({
+                    ...firstDownload.given,
+                    getSettings: () => {
+                        return { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'model-1' };
+                    },
+                    getLlmToken: () => {
+                        return 'sk-1';
+                    },
+                    llmFetch: llmFetchById,
+                    contextFetch: contextFetchById
+                });
+                const epById = addEpisode(runtimeById, firstDownload.video);
+                runtimeById?.db.saveAiring(epById.animeId, 20, 'finished');
+                expect(await runtimeById?.handlers.subtitles.translate({ episodeId: epById.id, trackId: null, language: 'Spanish' })).toEqual({
+                    ok: true,
+                    tracks: [
+                        { id: '', label: 'Default', kind: 'default' },
+                        { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                    ],
+                    translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                });
+                expect(contextFetchById).toHaveBeenCalledTimes(1);
+                expect(JSON.parse((contextFetchById.mock.calls[0]?.[1] as RequestInit).body as string)).toMatchObject({ variables: { id: 20 } });
+                const byIdBody = JSON.parse((llmFetchById.mock.calls[0] as unknown as [string, RequestInit])[1].body as string) as { messages: Array<{ role: string; content: string }> };
+                expect(byIdBody.messages[0]?.content).toContain('Series: Naruto (ナルト)\nPremise: A young ninja seeks recognition.\nCharacters: Naruto Uzumaki (うずまきナルト)');
+
+                const llmFetchByTitle = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const contextFetchByTitle = vi.fn<typeof fetch>(async () => {
+                    return new Response(JSON.stringify({ data: { Page: { media: [anilistMedia] } } }), { status: 200 });
+                });
+                const secondDownload = downloaded({ 'Naruto Episode 1.vtt': SOURCE });
+                const runtimeByTitle = open({
+                    ...secondDownload.given,
+                    getSettings: () => {
+                        return { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'model-1' };
+                    },
+                    getLlmToken: () => {
+                        return 'sk-1';
+                    },
+                    llmFetch: llmFetchByTitle,
+                    contextFetch: contextFetchByTitle
+                });
+                const epByTitle = addEpisode(runtimeByTitle, secondDownload.video);
+                expect(await runtimeByTitle?.handlers.subtitles.translate({ episodeId: epByTitle.id, trackId: null, language: 'Spanish' })).toEqual({
+                    ok: true,
+                    tracks: [
+                        { id: '', label: 'Default', kind: 'default' },
+                        { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                    ],
+                    translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                });
+                expect(contextFetchByTitle).toHaveBeenCalledTimes(1);
+                expect(JSON.parse((contextFetchByTitle.mock.calls[0]?.[1] as RequestInit).body as string)).toMatchObject({ variables: { search: 'Naruto' } });
+                const byTitleBody = JSON.parse((llmFetchByTitle.mock.calls[0] as unknown as [string, RequestInit])[1].body as string) as { messages: Array<{ role: string; content: string }> };
+                expect(byTitleBody.messages[0]?.content).toContain('Series: Naruto (ナルト)\nPremise: A young ninja seeks recognition.\nCharacters: Naruto Uzumaki (うずまきナルト)');
             });
 
             it('says what translating would take, without asking the model', async () => {
@@ -983,7 +1082,7 @@ describe('createAnimeRuntime', () => {
             });
 
             describe('with Gemini as the speech service', () => {
-                const GEMINI_ANSWER = '[{"start":1,"end":2,"text":"Olá"}]';
+                const GEMINI_ANSWER = '[{"start":"00:01.000","end":"00:02.000","text":"Olá"}]';
 
                 function geminiAnswer(): Response {
                     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: GEMINI_ANSWER }] } }] }), { status: 200 });
@@ -1008,6 +1107,7 @@ describe('createAnimeRuntime', () => {
                     expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'x-goog-api-key': 'gem-key' });
                     const body = JSON.parse(init.body as string) as { contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> };
                     expect(body.contents[0]?.parts[0]?.text).toContain('Write what is said translated into Portuguese (Brazil).');
+                    expect(body.contents[0]?.parts[0]?.text).toContain('Context for names and terminology only (do not repeat these lines in the output):\nNaruto');
                     expect(body.contents[0]?.parts[1]?.inlineData).toEqual({ mimeType: 'audio/mp3', data: Buffer.from([1, 2, 3]).toString('base64') });
                 });
 
@@ -1076,7 +1176,7 @@ describe('createAnimeRuntime', () => {
                     const speechFetch = vi.fn(async () => {
                         return new Response(
                             JSON.stringify({
-                                candidates: [{ content: { parts: [{ text: '[{"start":178,"end":190,"text":"Fim"},{"start":200,"end":210,"text":"Fora"}]' }] } }]
+                                candidates: [{ content: { parts: [{ text: '[{"start":"02:58.000","end":"03:10.000","text":"Fim"},{"start":"03:20.000","end":"03:30.000","text":"Fora"}]' }] } }]
                             }),
                             { status: 200 }
                         );
@@ -1131,6 +1231,66 @@ describe('createAnimeRuntime', () => {
                         }
                     });
                     expect(speechFetch).toHaveBeenCalledTimes(2);
+                });
+
+                it('enriches Gemini prompts with AniList synopsis and characters when available via stored anilist_id', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return geminiAnswer();
+                    });
+                    const contextFetch = vi.fn<typeof fetch>(async () => {
+                        return new Response(
+                            JSON.stringify({
+                                data: {
+                                    Media: {
+                                        title: { romaji: 'Naruto', english: 'Naruto', native: 'ナルト' },
+                                        description: 'A young ninja seeks recognition.',
+                                        characters: { nodes: [{ name: { full: 'Naruto Uzumaki', native: 'うずまきナルト' } }] }
+                                    }
+                                }
+                            }),
+                            { status: 200 }
+                        );
+                    });
+                    const { video, given } = downloaded();
+                    const runtime = open({
+                        ...given,
+                        getSettings: () => {
+                            return { ...DEFAULT_SETTINGS, transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: '' };
+                        },
+                        getLlmToken: () => {
+                            return 'gem-key';
+                        },
+                        speechFetch,
+                        contextFetch,
+                        runFfmpeg: vi.fn(async () => {
+                            return { code: 0, stderr: '' };
+                        }),
+                        audioFiles: {
+                            makeDirectory: () => {
+                                return join('/tmp', 'work');
+                            },
+                            list: () => {
+                                return ['part-000.mp3'];
+                            },
+                            read: () => {
+                                return new Uint8Array([1, 2, 3]);
+                            },
+                            size: () => {
+                                return 3;
+                            },
+                            remove: vi.fn()
+                        }
+                    });
+                    const episode = addEpisode(runtime, video);
+                    runtime?.db.saveAiring(episode.animeId, 20, 'finished');
+                    expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Portuguese (Brazil)' })).toEqual({
+                        ok: true,
+                        tracks: [{ id: 'generated-Portuguese (Brazil)', label: 'Portuguese (Brazil)', kind: 'generated' }],
+                        generated: { id: 'generated-Portuguese (Brazil)', label: 'Portuguese (Brazil)', kind: 'generated' }
+                    });
+                    expect(contextFetch).toHaveBeenCalledTimes(1);
+                    const body = JSON.parse((speechFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string) as { contents: Array<{ parts: Array<{ text?: string }> }> };
+                    expect(body.contents[0]?.parts[0]?.text).toContain('Series: Naruto (ナルト)\nPremise: A young ninja seeks recognition.\nCharacters: Naruto Uzumaki (うずまきナルト)');
                 });
             });
 

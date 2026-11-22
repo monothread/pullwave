@@ -10,13 +10,15 @@ const RESPONSE_SCHEMA = {
     items: {
         type: 'OBJECT',
         properties: {
-            start: { type: 'NUMBER' },
-            end: { type: 'NUMBER' },
+            start: { type: 'STRING' },
+            end: { type: 'STRING' },
             text: { type: 'STRING' }
         },
         required: ['start', 'end', 'text']
     }
 } as const;
+const TIMESTAMP_MM_SS = /^(\d{1,2}):([0-5]\d)(?:\.(\d{1,3}))?$/;
+const TIMESTAMP_HH_MM_SS = /^(\d{1,2}):([0-5]\d):([0-5]\d)(?:\.(\d{1,3}))?$/;
 
 export interface GeminiSpeechRequest {
     baseUrl: string;
@@ -26,6 +28,7 @@ export interface GeminiSpeechRequest {
     audioLanguage: string;
     language: string;
     audio: Uint8Array;
+    context?: string;
     maxSeconds?: number;
     signal?: AbortSignal;
     timeoutMs?: number;
@@ -37,16 +40,18 @@ interface Segment {
     text: string;
 }
 
-export function promptFor(task: SpeechTask, audioLanguage: string, language: string): string {
+export function promptFor(task: SpeechTask, audioLanguage: string, language: string, context?: string): string {
     const writing = task === 'translate' ? `translated into ${language}` : `in ${audioLanguage}, the language it is said in`;
+    const trimmedContext = context?.trim() ?? '';
     return [
         'You write the subtitles of an episode from its audio.',
         `The audio is spoken in ${audioLanguage}. Write what is said ${writing}.`,
         ...(task === 'translate' ? [`Every subtitle line must be written in ${language}; do not leave any line in ${audioLanguage}.`] : []),
-        'Answer with only a JSON array, with no code fence and no comment. Each item is one line of the subtitle: {"start": number, "end": number, "text": string}.',
-        '"start" and "end" are the seconds, counted from the start of this audio (decimals are fine), when the line appears and disappears.',
+        'Answer with only a JSON array, with no code fence and no comment. Each item is one line of the subtitle: {"start": "MM:SS.mmm", "end": "MM:SS.mmm", "text": string}.',
+        '"start" and "end" are timestamps in MM:SS.mmm format counted from 00:00.000 at the start of this audio (for example "01:23.500" for 1 minute and 23.5 seconds; seconds must be 00 to 59), when the line appears and disappears.',
         'Keep the items in order and not overlapping. Each line is a sentence or a short phrase, with at most two lines of about forty characters.',
-        'Do not describe sounds or music and do not write the names of who speaks. If nothing is said, answer [].'
+        'Do not describe sounds or music and do not write the names of who speaks. If nothing is said, answer [].',
+        ...(trimmedContext.length > 0 ? [`Context for names and terminology only (do not repeat these lines in the output):\n${trimmedContext}`] : [])
     ].join(' ');
 }
 
@@ -72,6 +77,26 @@ function answerText(body: unknown): string | null {
     return texts.length > 0 ? texts.join('') : null;
 }
 
+function fractionSecondsOf(fraction: string | undefined): number {
+    return fraction === undefined ? 0 : Number(fraction.padEnd(3, '0')) / 1000;
+}
+
+export function parseTimestamp(value: unknown): number | null {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    const shortMatch = TIMESTAMP_MM_SS.exec(trimmed);
+    if (shortMatch !== null) {
+        return Number(shortMatch[1]) * 60 + Number(shortMatch[2]) + fractionSecondsOf(shortMatch[3]);
+    }
+    const longMatch = TIMESTAMP_HH_MM_SS.exec(trimmed);
+    if (longMatch !== null) {
+        return Number(longMatch[1]) * 3600 + Number(longMatch[2]) * 60 + Number(longMatch[3]) + fractionSecondsOf(longMatch[4]);
+    }
+    return null;
+}
+
 export function parseSegments(answer: string, maxSeconds?: number): Segment[] | null {
     const unfenced = answer.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     let parsed: unknown;
@@ -86,22 +111,24 @@ export function parseSegments(answer: string, maxSeconds?: number): Segment[] | 
     const segments: Segment[] = [];
     let droppedOutOfBounds = false;
     for (const item of parsed) {
-        if (!isRecord(item) || typeof item.start !== 'number' || typeof item.end !== 'number' || typeof item.text !== 'string') {
+        if (!isRecord(item) || typeof item.text !== 'string') {
             return null;
         }
-        if (!Number.isFinite(item.start) || !Number.isFinite(item.end) || item.start < 0 || item.end <= item.start) {
+        const start = parseTimestamp(item.start);
+        const rawEnd = parseTimestamp(item.end);
+        if (start === null || rawEnd === null || rawEnd <= start) {
             return null;
         }
         const text = item.text.trim().replace(/\n\s*\n+/g, '\n');
         if (text.length === 0) {
             continue;
         }
-        if (maxSeconds !== undefined && item.start >= maxSeconds) {
+        if (maxSeconds !== undefined && start >= maxSeconds) {
             droppedOutOfBounds = true;
             continue;
         }
-        const end = maxSeconds !== undefined ? Math.min(item.end, maxSeconds) : item.end;
-        segments.push({ start: item.start, end, text });
+        const end = maxSeconds !== undefined ? Math.min(rawEnd, maxSeconds) : rawEnd;
+        segments.push({ start, end, text });
     }
     if (segments.length === 0 && droppedOutOfBounds) {
         return null;
@@ -136,7 +163,7 @@ export async function transcribeWithGemini(request: GeminiSpeechRequest, fetchIm
                 contents: [
                     {
                         parts: [
-                            { text: promptFor(request.task, request.audioLanguage, request.language) },
+                            { text: promptFor(request.task, request.audioLanguage, request.language, request.context) },
                             { inlineData: { mimeType: AUDIO_TYPE, data: Buffer.from(request.audio).toString('base64') } }
                         ]
                     }

@@ -533,6 +533,11 @@ export class AnimeDb {
         this.run('UPDATE anime SET anilist_id = ?, airing_status = ?, airing_checked_at = ? WHERE id = ?', anilistId, status, this.now(), animeId);
     }
 
+    getAnilistId(animeId: number): number | null {
+        const row = this.one('SELECT anilist_id FROM anime WHERE id = ?', animeId);
+        return row === null ? null : nullableNumeric(row, 'anilist_id');
+    }
+
     setAiringOverride(animeId: number, override: AnimeAiringOverride | null): void {
         this.run('UPDATE anime SET airing_override = ? WHERE id = ?', override, animeId);
     }

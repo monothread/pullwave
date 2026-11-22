@@ -6,6 +6,8 @@ import {
     CONTEXT_PIECES,
     estimateSubtitleGeneration,
     generateEpisodeSubtitle,
+    PART_CONTEXT_LINES,
+    partPromptOf,
     piecePromptOf,
     PIECE_STREAMS,
     type GenerationProgressExtra,
@@ -512,6 +514,266 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
                 ''
             ].join('\n')
         );
+    });
+
+    it('passes the title and a rolling window of recent lines as prompt context across parts for services that translate directly to any language', async () => {
+        const partZero = 'WEBVTT\n\n00:01.000 --> 00:02.000\nLine 1\n\n00:03.000 --> 00:04.000\nLine 2\n\n00:05.000 --> 00:06.000\nLine 3\n\n00:07.000 --> 00:08.000\nLine 4\n';
+        const partOne = 'WEBVTT\n';
+        const partTwo = 'WEBVTT\n\n00:01.000 --> 00:02.000\nLine 5\n';
+        const partThree = 'WEBVTT\n\n00:01.000 --> 00:02.000\nLine 6\n';
+        const ask = speaking(partZero, partOne, partTwo, partThree);
+        const audio = audioFiles(['part-000.mp3', 'part-001.mp3', 'part-002.mp3', 'part-003.mp3']);
+        const { dependencies } = setup(ask, translating(), { audio }, 'any');
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn());
+        expect(PART_CONTEXT_LINES).toBe(3);
+        expect(
+            ask.mock.calls.map((call) => {
+                return [call[0].fileName, call[0].prompt];
+            })
+        ).toEqual([
+            ['part-0.mp3', TITLE],
+            ['part-1.mp3', `${TITLE}\nLine 2\nLine 3\nLine 4`],
+            ['part-2.mp3', `${TITLE}\nLine 2\nLine 3\nLine 4`],
+            ['part-3.mp3', `${TITLE}\nLine 3\nLine 4\nLine 5`]
+        ]);
+    });
+
+    it('omits the prompt on the first part when the title is null and no previous lines exist, and starts sending context once lines exist', async () => {
+        const ask = speaking(FIRST_PART, SECOND_PART);
+        const { dependencies } = setup(ask, translating(), {}, 'any');
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: null }, dependencies, vi.fn());
+        expect(
+            ask.mock.calls.map((call) => {
+                return [call[0].fileName, call[0].prompt];
+            })
+        ).toEqual([
+            ['part-0.mp3', undefined],
+            ['part-1.mp3', 'こんにちは\nまたね']
+        ]);
+    });
+
+    it('does not attach a prompt when sending parts to services that only translate to English', async () => {
+        const ask = speaking(FIRST_PART, SECOND_PART);
+        const { dependencies } = setup(ask, translating(), {}, 'english');
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn());
+        expect(
+            ask.mock.calls.map((call) => {
+                return call[0].prompt;
+            })
+        ).toEqual([undefined, undefined]);
+    });
+});
+
+describe('partPromptOf', () => {
+    it.each([
+        ['only the title when no previous lines exist', 'Death Parade', [], 'Death Parade'],
+        ['the title followed by trimmed non-empty lines', 'Death Parade', ['  Welcome. ', '', '  I am Decim.'], 'Death Parade\nWelcome.\nI am Decim.'],
+        ['only the lines when the title is null', null, ['Welcome.', 'I am Decim.'], 'Welcome.\nI am Decim.'],
+        ['only the lines when the title is whitespace and seriesContext is null', '   ', ['Welcome.'], 'Welcome.'],
+        ['empty when title is null and no lines exist', null, ['', '   '], '']
+    ] as const)('formats %s', (_name, title, previous, expected) => {
+        expect(partPromptOf(title, previous, null)).toBe(expected);
+    });
+
+    it('uses formatted series context in place of the bare title when available', () => {
+        const seriesContext = {
+            title: 'Death Parade',
+            nativeTitle: 'デス・パレード',
+            synopsis: 'Souls are judged at Quindecim.',
+            characters: [{ full: 'Decim', native: 'デキム' }]
+        };
+        expect(partPromptOf('Death Parade', ['Welcome.'], seriesContext)).toBe(
+            'Series: Death Parade (デス・パレード)\nPremise: Souls are judged at Quindecim.\nCharacters: Decim (デキム)\nWelcome.'
+        );
+    });
+
+    it('enriches both Gemini parts and GPT transcription/translation when resolveSeriesContext returns AniList context', async () => {
+        const seriesContext = {
+            title: 'Death Parade',
+            nativeTitle: 'デス・パレード',
+            synopsis: 'Souls are judged at Quindecim.',
+            characters: [{ full: 'Decim', native: 'デキム' }]
+        };
+        const askGemini = speaking(FIRST_PART, SECOND_PART);
+        const { dependencies: geminiDeps } = setup(
+            askGemini,
+            translating(),
+            {
+                resolveSeriesContext: async () => {
+                    return seriesContext;
+                }
+            },
+            'any'
+        );
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: 'Death Parade' }, geminiDeps, vi.fn());
+        expect(askGemini.mock.calls[0]?.[0].prompt).toBe('Series: Death Parade (デス・パレード)\nPremise: Souls are judged at Quindecim.\nCharacters: Decim (デキム)');
+        expect(askGemini.mock.calls[1]?.[0].prompt).toBe('Series: Death Parade (デス・パレード)\nPremise: Souls are judged at Quindecim.\nCharacters: Decim (デキム)\nこんにちは\nまたね');
+
+        const askPiece = speaking('こんにちは');
+        const translate = translating();
+        const pcm = pcmOf([tone(1)]);
+        const pieceAudio: AudioFiles = {
+            makeDirectory: vi.fn(() => {
+                return WORK;
+            }),
+            list: vi.fn(() => {
+                return ['speech.pcm', 'piece-0000.mp3'];
+            }),
+            read: vi.fn((path: string) => {
+                return path.endsWith('speech.pcm') ? pcm : new Uint8Array([1, 2, 3]);
+            }),
+            size: vi.fn(() => {
+                return 3;
+            }),
+            remove: vi.fn()
+        };
+        const { dependencies: gptDeps } = setup(askPiece, translate, {
+            audio: pieceAudio,
+            speech: () => {
+                return { ok: true, translatesTo: 'none', cutsAtPauses: true, ask: askPiece };
+            },
+            resolveSeriesContext: async () => {
+                return seriesContext;
+            }
+        });
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: 'Death Parade' }, gptDeps, vi.fn());
+        expect(askPiece.mock.calls[0]?.[0].prompt).toBe('Death Parade');
+        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('English', { title: 'Death Parade' }, seriesContext));
+    });
+
+    it('skips resolveSeriesContext when transcribing without translation on non-Gemini speech providers', async () => {
+        const resolveSeriesContext = vi.fn(async () => {
+            return { title: 'Death Parade', nativeTitle: null, synopsis: null, characters: [] };
+        });
+        const ask = speaking(FIRST_PART, SECOND_PART);
+        const { dependencies } = setup(ask, translating(), { resolveSeriesContext }, 'english');
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: 'Death Parade' }, dependencies, vi.fn());
+        expect(result).toEqual({
+            ok: true,
+            tracks: [{ id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }],
+            generated: { id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }
+        });
+        expect(resolveSeriesContext).not.toHaveBeenCalled();
+    });
+
+    it('does not block non-Gemini part transcription on resolveSeriesContext, and uses the resolved context for translation', async () => {
+        const seriesContext = {
+            title: 'Death Parade',
+            nativeTitle: 'デス・パレード',
+            synopsis: 'Souls are judged at Quindecim.',
+            characters: [{ full: 'Decim', native: 'デキム' }]
+        };
+        let releaseContext: (value: typeof seriesContext) => void = () => {
+            return undefined;
+        };
+        let partsCompleted = 0;
+        const resolveSeriesContext = vi.fn(() => {
+            return new Promise<typeof seriesContext>((resolve) => {
+                releaseContext = resolve;
+            });
+        });
+        const ask = vi.fn<Ask>(async () => {
+            partsCompleted += 1;
+            const text = partsCompleted === 1 ? FIRST_PART : SECOND_PART;
+            if (partsCompleted === 2) {
+                releaseContext(seriesContext);
+            }
+            return { ok: true, text };
+        });
+        const translate = translating();
+        const { dependencies } = setup(ask, translate, { resolveSeriesContext }, 'english');
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: 'Death Parade' }, dependencies, vi.fn());
+        expect(result).toEqual({
+            ok: true,
+            tracks: [{ id: 'generated-Spanish', label: 'Spanish', kind: 'generated' }],
+            generated: { id: 'generated-Spanish', label: 'Spanish', kind: 'generated' }
+        });
+        expect(partsCompleted).toBe(2);
+        expect(resolveSeriesContext).toHaveBeenCalledTimes(1);
+        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', { title: 'Death Parade' }, seriesContext));
+    });
+
+    it('falls back to the bare title when resolveSeriesContext rejects', async () => {
+        const askGemini = speaking(FIRST_PART, SECOND_PART);
+        const { dependencies } = setup(
+            askGemini,
+            translating(),
+            {
+                resolveSeriesContext: async () => {
+                    throw new Error('anilist down');
+                }
+            },
+            'any'
+        );
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: 'Death Parade' }, dependencies, vi.fn());
+        expect(result).toEqual({
+            ok: true,
+            tracks: [{ id: 'generated-English', label: 'English', kind: 'generated' }],
+            generated: { id: 'generated-English', label: 'English', kind: 'generated' }
+        });
+        expect(askGemini.mock.calls[0]?.[0].prompt).toBe('Death Parade');
+    });
+
+    it('returns cancelled without calling translate when aborted while awaiting seriesContext before translation', async () => {
+        const controller = new AbortController();
+        let releaseContext: (value: null) => void = () => {
+            return undefined;
+        };
+        let partsDone = 0;
+        const ask = vi.fn<Ask>(async () => {
+            partsDone += 1;
+            return { ok: true, text: partsDone === 1 ? FIRST_PART : SECOND_PART };
+        });
+        const translate = translating();
+        const onProgress = vi.fn();
+        const { files, dependencies } = setup(
+            ask,
+            translate,
+            {
+                resolveSeriesContext: () => {
+                    return new Promise<null>((resolve) => {
+                        releaseContext = resolve;
+                    });
+                }
+            },
+            'english'
+        );
+        const running = generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: 'Death Parade' }, dependencies, onProgress, controller.signal);
+        await vi.waitFor(() => {
+            expect(partsDone).toBe(2);
+        });
+        controller.abort();
+        releaseContext(null);
+        expect(await running).toEqual({ ok: false, reason: 'cancelled' });
+        expect(translate).not.toHaveBeenCalled();
+        expect(files.written).toEqual({});
+        expect(
+            onProgress.mock.calls.some((call) => {
+                return (call[2] as GenerationProgressExtra).phase === 'translating';
+            })
+        ).toBe(false);
+    });
+
+    it('uses request.seriesContext directly without calling resolveSeriesContext', async () => {
+        const seriesContext = {
+            title: 'Death Parade',
+            nativeTitle: 'デス・パレード',
+            synopsis: 'Souls are judged at Quindecim.',
+            characters: [{ full: 'Decim', native: 'デキム' }]
+        };
+        const resolveSeriesContext = vi.fn(async () => {
+            return null;
+        });
+        const askGemini = speaking(FIRST_PART, SECOND_PART);
+        const { dependencies } = setup(askGemini, translating(), { resolveSeriesContext }, 'any');
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: 'Death Parade', seriesContext }, dependencies, vi.fn());
+        expect(result).toEqual({
+            ok: true,
+            tracks: [{ id: 'generated-English', label: 'English', kind: 'generated' }],
+            generated: { id: 'generated-English', label: 'English', kind: 'generated' }
+        });
+        expect(resolveSeriesContext).not.toHaveBeenCalled();
+        expect(askGemini.mock.calls[0]?.[0].prompt).toBe('Series: Death Parade (デス・パレード)\nPremise: Souls are judged at Quindecim.\nCharacters: Decim (デキム)');
     });
 });
 

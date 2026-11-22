@@ -439,9 +439,43 @@ describe('translateEpisodeSubtitle', () => {
             const controller = new AbortController();
             controller.abort();
             const ask = bracketing();
-            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access(ask)}, files }, vi.fn(), controller.signal);
+            const onProgress = vi.fn();
+            const resolveSeriesContext = vi.fn(async () => {
+                return null;
+            });
+            const result = await translateEpisodeSubtitle(
+                VIDEO,
+                { trackId: null, language: 'Spanish' },
+                { llm: () => { return access(ask); }, files, resolveSeriesContext },
+                onProgress,
+                controller.signal
+            );
             expect(result).toEqual({ ok: false, reason: 'cancelled' });
             expect(ask).not.toHaveBeenCalled();
+            expect(resolveSeriesContext).not.toHaveBeenCalled();
+            expect(onProgress).not.toHaveBeenCalled();
+            expect(files.written).toEqual({});
+        });
+
+        it('returns cancelled without calling the model when aborted while resolving series context', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT });
+            const controller = new AbortController();
+            const ask = bracketing();
+            const onProgress = vi.fn();
+            const resolveSeriesContext = vi.fn(async () => {
+                controller.abort();
+                return null;
+            });
+            const result = await translateEpisodeSubtitle(
+                VIDEO,
+                { trackId: null, language: 'Spanish' },
+                { llm: () => { return access(ask); }, files, resolveSeriesContext },
+                onProgress,
+                controller.signal
+            );
+            expect(result).toEqual({ ok: false, reason: 'cancelled' });
+            expect(ask).not.toHaveBeenCalled();
+            expect(onProgress.mock.calls).toEqual([[0, 2]]);
             expect(files.written).toEqual({});
         });
 
@@ -473,6 +507,86 @@ describe('translateEpisodeSubtitle', () => {
                 }
             };
             expect(await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access()}, files }, vi.fn())).toEqual({ ok: false, reason: 'unreadable' });
+        });
+
+        it('enriches the translation prompt with resolved series context, deduplicates initial progress, and ignores resolver errors', async () => {
+            const ask = bracketing();
+            const onProgress = vi.fn();
+            const seriesContext = {
+                title: 'Death Parade',
+                nativeTitle: 'デス・パレード',
+                synopsis: 'Souls are judged at Quindecim.',
+                characters: [{ full: 'Decim', native: 'デキム' }]
+            };
+            const resolveSeriesContext = vi.fn(async () => {
+                return seriesContext;
+            });
+            const expectedSuccess = {
+                ok: true,
+                tracks: [
+                    { id: '', label: 'Default', kind: 'default' },
+                    { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                ],
+                translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+            };
+            const result = await translateEpisodeSubtitle(
+                VIDEO,
+                { trackId: null, language: 'Spanish' },
+                { llm: () => { return access(ask); }, files: memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT }), resolveSeriesContext },
+                onProgress
+            );
+            expect(result).toEqual(expectedSuccess);
+            expect(resolveSeriesContext).toHaveBeenCalledTimes(1);
+            expect(onProgress.mock.calls).toEqual([
+                [0, 2],
+                [2, 2]
+            ]);
+            expect(ask.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', undefined, seriesContext));
+
+            const askFallback = bracketing();
+            const failingResult = await translateEpisodeSubtitle(
+                VIDEO,
+                { trackId: null, language: 'Spanish' },
+                {
+                    llm: () => { return access(askFallback); },
+                    files: memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT }),
+                    resolveSeriesContext: async () => {
+                        throw new Error('network error');
+                    }
+                },
+                vi.fn()
+            );
+            expect(failingResult).toEqual(expectedSuccess);
+            expect(askFallback.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish'));
+        });
+
+        it('uses request.seriesContext directly without calling resolveSeriesContext', async () => {
+            const ask = bracketing();
+            const seriesContext = {
+                title: 'Death Parade',
+                nativeTitle: 'デス・パレード',
+                synopsis: 'Souls are judged at Quindecim.',
+                characters: [{ full: 'Decim', native: 'デキム' }]
+            };
+            const resolveSeriesContext = vi.fn(async () => {
+                return null;
+            });
+            const result = await translateEpisodeSubtitle(
+                VIDEO,
+                { trackId: null, language: 'Spanish', seriesContext },
+                { llm: () => { return access(ask); }, files: memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT }), resolveSeriesContext },
+                vi.fn()
+            );
+            expect(result).toEqual({
+                ok: true,
+                tracks: [
+                    { id: '', label: 'Default', kind: 'default' },
+                    { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                ],
+                translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+            });
+            expect(resolveSeriesContext).not.toHaveBeenCalled();
+            expect(ask.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', undefined, seriesContext));
         });
     });
 });

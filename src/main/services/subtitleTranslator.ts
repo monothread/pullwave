@@ -1,4 +1,5 @@
 import type { LlmCompletionResult, LlmError } from '@shared/llm';
+import { formatSeriesContext, type AnimeSubtitleContext } from './animeSubtitleContext';
 
 export const HALVES_FROM_CUES = 60;
 export const MAX_BATCH_CUES = 250;
@@ -59,11 +60,16 @@ function recognizedSpeechPrompt(recognized: RecognizedSpeech): string[] {
     ];
 }
 
-export function systemPromptFor(language: string, recognized?: RecognizedSpeech): string {
+function seriesContextPrompt(seriesContext: AnimeSubtitleContext): string {
+    return `Series reference (use these official spellings for names and terminology):\n${formatSeriesContext(seriesContext)}`;
+}
+
+export function systemPromptFor(language: string, recognized?: RecognizedSpeech, seriesContext?: AnimeSubtitleContext | null): string {
     return [
         'You are a professional translator of anime subtitles.',
         `The user sends a JSON array of strings, the lines of a subtitle in order. Translate each string into ${language}.`,
         ...(recognized === undefined ? [] : recognizedSpeechPrompt(recognized)),
+        ...(seriesContext === undefined || seriesContext === null ? [] : [seriesContextPrompt(seriesContext)]),
         'Keep the meaning, the tone and the register of spoken dialogue.',
         'Keep the names of people, places, groups and techniques as they are, written the same way in every line, and keep Japanese honorifics such as -san, -kun, -chan, -sama, -senpai and -sensei attached to the names; do not translate or drop them.',
         'Keep the line breaks (\\n) and any markup tags such as <i>...</i> where they are.',
@@ -212,12 +218,18 @@ async function askForBatch(texts: string[], context: Context): Promise<Translate
     return second.ok ? { ok: true, texts: [...first.texts, ...second.texts] } : second;
 }
 
-export async function translateTexts(texts: readonly string[], language: string, dependencies: TranslatorDependencies, recognized?: RecognizedSpeech): Promise<TranslateTextsResult> {
+export async function translateTexts(
+    texts: readonly string[],
+    language: string,
+    dependencies: TranslatorDependencies,
+    recognized?: RecognizedSpeech,
+    seriesContext?: AnimeSubtitleContext | null
+): Promise<TranslateTextsResult> {
     const positions = texts.flatMap((text, index) => {
         return text.trim().length > 0 ? [index] : [];
     });
     const translated = [...texts];
-    const context: Context = { system: systemPromptFor(language, recognized), dependencies, batches: dependencies.batches ?? createTranslatedBatches(), keys: [] };
+    const context: Context = { system: systemPromptFor(language, recognized, seriesContext), dependencies, batches: dependencies.batches ?? createTranslatedBatches(), keys: [] };
     let done = 0;
     dependencies.onProgress?.(0, texts.length);
     for (const batchTexts of splitIntoBatches(positions.map((position) => {

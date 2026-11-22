@@ -7,6 +7,7 @@ import {
     type TranslationLanguage
 } from '@shared/anime';
 import type { LlmCompletionResult } from '@shared/llm';
+import type { AnimeSubtitleContext } from './animeSubtitleContext';
 import { defaultSubtitleFileSystem, hasTranslatedSubtitle, listSubtitleFiles, toWebVtt, translatedSubtitlePath, type SubtitleFile, type SubtitleFileSystem } from './subtitleFiles';
 import { hasSubtitleIn } from './subtitleLanguage';
 import { estimateTranslation, translateTexts, type TranslatedBatches } from './subtitleTranslator';
@@ -21,6 +22,7 @@ export interface SubtitleTranslationDependencies {
     files?: SubtitleFileSystem;
     sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
     batches?: TranslatedBatches;
+    resolveSeriesContext?: (signal?: AbortSignal) => Promise<AnimeSubtitleContext | null>;
 }
 
 type SourceFailure = Extract<SubtitleTranslateResponse, { ok: false; reason: string }>['reason'];
@@ -94,9 +96,13 @@ export function canBeTranslated(videoPath: string, language: TranslationLanguage
     return pickSource(listSubtitleFiles(videoPath, files), null) !== null;
 }
 
+function isAborted(signal?: AbortSignal): boolean {
+    return signal?.aborted === true;
+}
+
 export async function translateEpisodeSubtitle(
     videoPath: string,
-    request: Pick<SubtitleTranslateRequest, 'trackId' | 'replace'> & { language: TranslationLanguage },
+    request: Pick<SubtitleTranslateRequest, 'trackId' | 'replace'> & { language: TranslationLanguage; seriesContext?: AnimeSubtitleContext | null },
     dependencies: SubtitleTranslationDependencies,
     onProgress: TranslationProgress,
     signal?: AbortSignal
@@ -116,15 +122,47 @@ export async function translateEpisodeSubtitle(
     if (!source.ok) {
         return { ok: false, reason: source.reason };
     }
-    const result = await translateTexts(textsOf(source.parsed), request.language, {
-        complete: (system, user) => {
-            return access.ask(system, user, signal);
+    if (isAborted(signal)) {
+        return { ok: false, reason: 'cancelled' };
+    }
+    const total = source.parsed.cues.length;
+    let reportedInitial = false;
+    let seriesContext: AnimeSubtitleContext | null;
+    if (request.seriesContext !== undefined) {
+        seriesContext = request.seriesContext;
+    } else if (dependencies.resolveSeriesContext !== undefined) {
+        onProgress(0, total);
+        reportedInitial = true;
+        seriesContext = await dependencies.resolveSeriesContext(signal).catch(() => {
+            return null;
+        });
+    } else {
+        seriesContext = null;
+    }
+    if (isAborted(signal)) {
+        return { ok: false, reason: 'cancelled' };
+    }
+    const result = await translateTexts(
+        textsOf(source.parsed),
+        request.language,
+        {
+            complete: (system, user) => {
+                return access.ask(system, user, signal);
+            },
+            sleep: dependencies.sleep,
+            batches: dependencies.batches,
+            signal,
+            onProgress: (done, count) => {
+                if (reportedInitial && done === 0 && count === total) {
+                    reportedInitial = false;
+                    return;
+                }
+                onProgress(done, count);
+            }
         },
-        sleep: dependencies.sleep,
-        batches: dependencies.batches,
-        signal,
-        onProgress
-    });
+        undefined,
+        seriesContext
+    );
     if (!result.ok) {
         return result.error.code === 'CANCELLED' ? { ok: false, reason: 'cancelled' } : { ok: false, reason: 'failed', error: result.error };
     }
