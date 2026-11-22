@@ -2326,6 +2326,33 @@ describe('AnimeLibrary episodes that the check for new episodes put in the libra
         expect(within(rows[0] as HTMLElement).queryByTestId('anime-episode-new')).not.toBeInTheDocument();
         expect(within(rows[1] as HTMLElement).getByTestId('anime-episode-new')).toHaveTextContent('NEW');
     });
+
+    it('determines new episodes for series, seasons and episode rows in the configured time zone', async () => {
+        const user = userEvent.setup();
+        const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+        const arrived = Date.UTC(2026, 9, 7, 14, 30, 0);
+        vi.setSystemTime(now);
+        const series = makeAnime([idle(1, '1', arrived)], { id: 15, title: 'Frieren', series: 'Frieren', season: 1 });
+        useAnimeStore.setState({ library: [series] });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'Asia/Tokyo' } });
+
+        const { unmount } = render(<AnimeLibrary />);
+        expect(screen.queryByTestId('anime-new-episodes')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+        expect(screen.queryByTestId('anime-new-episodes')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+        expect(screen.queryByTestId('anime-episode-new')).not.toBeInTheDocument();
+        unmount();
+
+        useAnimeStore.setState({ library: [series], librarySeries: null, librarySeason: null });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'UTC' } });
+        render(<AnimeLibrary />);
+        expect(screen.getByTestId('anime-new-episodes')).toHaveTextContent('NEW EPISODE');
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+        expect(screen.getByTestId('anime-new-episodes')).toHaveTextContent('NEW EPISODE');
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+        expect(screen.getByTestId('anime-episode-new')).toHaveTextContent('NEW');
+    });
 });
 
 describe('AnimeLibrary the releases of an anime', () => {

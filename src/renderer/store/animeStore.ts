@@ -4,8 +4,7 @@ import { batchNavigation } from '../navigation/navigationBatch';
 import type { AniError, AnimeAiringOverride, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime, SubtitleTranslationJob } from '@shared/anime';
 import { IDLE_CHECK_STATE } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
-import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
-import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
+import { resolveTimeZone, zonedDayLimits } from '@shared/timezone';
 import type { MessageKey, MessageParams } from '@shared/i18n/core';
 import { createTranslator } from '../i18n/catalogs';
 import { resolveAppLanguage } from '../i18n/language';
@@ -39,14 +38,13 @@ const NO_MORE_RESULTS = { hasNextPage: false, limited: false, loadingMore: false
 
 export type AnimeCoverState = { status: 'found'; url: string } | { status: 'none' } | { status: 'failed' };
 
-export type { AnimeScheduleView } from './scheduleChoice';
+export type AnimeScheduleView = 'day' | 'week';
 
 export interface AnimeScheduleState {
     status: 'idle' | 'loading' | 'ready' | 'error';
     entries: AnimeScheduleEntry[];
     error: AniError | null;
     view: AnimeScheduleView;
-    timeZone: string;
     limits: number[];
 }
 
@@ -117,7 +115,6 @@ export interface AnimeState {
     loadCover: (title: string) => Promise<void>;
     loadSchedule: (refresh?: boolean) => Promise<void>;
     setScheduleView: (view: AnimeScheduleView) => void;
-    setScheduleTimeZone: (timeZone: string) => void;
     openScheduleEntry: (entry: AnimeScheduleEntry) => Promise<void>;
     openResult: (result: AnimeSearchResult) => Promise<void>;
     openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex'> & Partial<Pick<AnimeRecord, 'sourceId'>>) => Promise<void>;
@@ -180,7 +177,6 @@ export const INITIAL_SCHEDULE: AnimeScheduleState = {
     entries: [],
     error: null,
     view: 'day',
-    timeZone: machineTimeZone(),
     limits: []
 };
 
@@ -251,11 +247,6 @@ function upsertAnimeJob(jobs: AnimeJob[], job: AnimeJob): AnimeJob[] {
     });
 }
 
-function initialSchedule(): AnimeScheduleState {
-    const { timeZone } = readScheduleChoice();
-    return { ...INITIAL_SCHEDULE, timeZone: timeZone ?? INITIAL_SCHEDULE.timeZone };
-}
-
 export const useAnimeStore = create<AnimeState>((set, get) => {
     const refreshLibraryEntry = libraryEntryRefresh<LibraryAnime>({
         read: (animeId) => {
@@ -288,7 +279,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         library: [],
         history: [],
         search: INITIAL_SEARCH,
-        schedule: initialSchedule(),
+        schedule: INITIAL_SCHEDULE,
         covers: {},
         updates: [],
         checkingNew: null,
@@ -545,12 +536,27 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         loadSchedule: async (refresh = false) => {
-            const { view, timeZone } = get().schedule;
+            const { view, limits: currentLimits } = get().schedule;
+            const timeZone = resolveTimeZone(useAppStore.getState().settings.timeZone);
             const limits = zonedDayLimits(Date.now(), timeZone, view === 'week' ? 7 : 1);
+            const limitsChanged =
+                currentLimits.length > 0 &&
+                (limits.length !== currentLimits.length ||
+                    limits.some((limit, index) => {
+                        return limit !== currentLimits[index];
+                    }));
             const asked = scheduleRequest + 1;
             scheduleRequest = asked;
             set((state) => {
-                return { schedule: { ...state.schedule, status: 'loading', error: null, limits } };
+                return {
+                    schedule: {
+                        ...state.schedule,
+                        status: 'loading',
+                        error: null,
+                        limits,
+                        entries: limitsChanged ? [] : state.schedule.entries
+                    }
+                };
             });
             const response = await window.api.listAnimeSchedule({ from: limits[0] as number, to: limits[limits.length - 1] as number, refresh });
             if (asked !== scheduleRequest) {
@@ -591,13 +597,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         setScheduleView: (view) => {
             set((state) => {
                 return { schedule: { ...state.schedule, view, entries: [] } };
-            });
-        },
-
-        setScheduleTimeZone: (timeZone) => {
-            saveScheduleTimeZone(timeZone);
-            set((state) => {
-                return { schedule: { ...state.schedule, timeZone, entries: [] } };
             });
         },
 

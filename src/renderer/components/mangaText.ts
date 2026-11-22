@@ -1,6 +1,7 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
+import { groupByZonedDay, isSameZonedDay, machineTimeZone } from '@shared/timezone';
 import type { LibraryManga, MangaChapter, MangaChapterMove, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus, MangaUpdateEntry } from '@shared/manga';
 import type { ToolError, ToolErrorCode } from '@shared/tools';
 import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
@@ -225,19 +226,8 @@ export function chapterLabel(name: string, number: number | null): string {
     return number === null ? '' : `#${String(number)}`;
 }
 
-export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number): Array<{ day: number; entries: T[] }> {
-    const groups: Array<{ day: number; entries: T[] }> = [];
-    entries.forEach((entry) => {
-        const date = new Date(timeOf(entry));
-        const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-        const last = groups.at(-1);
-        if (last !== undefined && last.day === day) {
-            last.entries.push(entry);
-        } else {
-            groups.push({ day, entries: [entry] });
-        }
-    });
-    return groups;
+export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number, timeZone: string = machineTimeZone()): Array<{ day: number; entries: T[] }> {
+    return groupByZonedDay(entries, timeOf, timeZone);
 }
 
 export function chapterState(manga: LibraryManga | null, remoteId: number): MangaChapterRecord | null {
@@ -506,17 +496,17 @@ export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isR
     return firstUnread === -1 ? 0 : firstUnread;
 }
 
-export function isNewChapter(chapter: Pick<MangaChapterRecord, 'addedAt' | 'dateUploaded'>, now: number = Date.now()): boolean {
+export function isNewChapter(chapter: Pick<MangaChapterRecord, 'addedAt' | 'dateUploaded'>, now: number = Date.now(), timeZone: string = machineTimeZone()): boolean {
     const day = chapter.dateUploaded ?? chapter.addedAt;
-    return day !== null && new Date(day).toDateString() === new Date(now).toDateString();
+    return day !== null && isSameZonedDay(day, now, timeZone);
 }
 
-export function newChapterCount(mangas: readonly LibraryManga[], now: number = Date.now()): number {
+export function newChapterCount(mangas: readonly LibraryManga[], now: number = Date.now(), timeZone: string = machineTimeZone()): number {
     return mangas.reduce((total, manga) => {
         return (
             total +
             manga.chapters.filter((chapter) => {
-                return isNewChapter(chapter, now);
+                return isNewChapter(chapter, now, timeZone);
             }).length
         );
     }, 0);

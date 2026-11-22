@@ -1,5 +1,7 @@
 import type { ErrorDetails } from '@shared/errorDetails';
 import type { MessageKey } from '@shared/i18n';
+import { machineTimeZone } from '@shared/timezone';
+import { formatDateTime } from './dateFormat';
 
 export interface ErrorReport {
     summary: string;
@@ -18,6 +20,7 @@ export interface ErrorContext {
     appVersion: string;
     system: string;
     language: string;
+    timeZone?: string;
 }
 
 export interface CodedError {
@@ -37,16 +40,17 @@ export function hasMoreToSay(report: ErrorReport): boolean {
     return report.message !== '' || report.details !== null || report.code !== null || report.hint !== null;
 }
 
-function momentOf(occurredAt: number, language: string): string {
+function momentOf(occurredAt: number, language: string, timeZone: string): string {
     const date = new Date(occurredAt);
-    return `${date.toLocaleString(language)} (${date.toISOString()})`;
+    return `${formatDateTime(occurredAt, language, timeZone)} (${date.toISOString()})`;
 }
 
 export function errorFields(report: ErrorReport, context: ErrorContext): ErrorField[] {
     const { details } = report;
+    const timeZone = context.timeZone ?? machineTimeZone();
     const candidates: Array<[MessageKey, string | null | undefined]> = [
         ['errorDialog.field.code', report.code],
-        ['errorDialog.field.when', details === null ? null : momentOf(details.occurredAt, context.language)],
+        ['errorDialog.field.when', details === null ? null : momentOf(details.occurredAt, context.language, timeZone)],
         ['errorDialog.field.operation', details?.operation],
         ['errorDialog.field.url', details?.url],
         ['errorDialog.field.httpStatus', details?.httpStatus === undefined ? null : String(details.httpStatus)],

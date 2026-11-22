@@ -1948,6 +1948,55 @@ test.describe('languages', () => {
     });
 });
 
+test.describe('time zone', () => {
+    function clockIn(timeZone: string): string {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
+        const hour = parts.find((part) => {
+            return part.type === 'hour';
+        })?.value ?? '00';
+        const minute = parts.find((part) => {
+            return part.type === 'minute';
+        })?.value ?? '00';
+        return `${String(Number(hour) % 24).padStart(2, '0')}:${minute}`;
+    }
+
+    test('choosing a time zone in global settings saves it and updates the clock across the app', async () => {
+        const { page, userData } = session;
+        await openGlobalSettings(page);
+        const select = page.getByLabel('Time zone', { exact: true });
+        await expect(select).toHaveValue('device');
+        await expect(select.locator('option').first()).toHaveText('Device (follows the system)');
+
+        await select.selectOption('Asia/Tokyo');
+        await expect(select).toHaveValue('Asia/Tokyo');
+        await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
+        expect(readSettings(userData).timeZone).toBe('Asia/Tokyo');
+        await expect
+            .poll(async () => {
+                const shown = await page.locator('.topbar__clock').getAttribute('datetime');
+                return shown === clockIn('Asia/Tokyo');
+            })
+            .toBe(true);
+
+        await select.selectOption('America/Sao_Paulo');
+        await expect(select).toHaveValue('America/Sao_Paulo');
+        await expect.poll(() => {
+            return readSettings(userData).timeZone;
+        }).toBe('America/Sao_Paulo');
+        await expect
+            .poll(async () => {
+                const shown = await page.locator('.topbar__clock').getAttribute('datetime');
+                return shown === clockIn('America/Sao_Paulo');
+            })
+            .toBe(true);
+
+        await select.selectOption('device');
+        await expect.poll(() => {
+            return readSettings(userData).timeZone;
+        }).toBe('device');
+    });
+});
+
 test('@resize stops every animation while the window is minimized and runs them again when it comes back', async () => {
     const { app, page } = session;
     const running = async (): Promise<number> => {

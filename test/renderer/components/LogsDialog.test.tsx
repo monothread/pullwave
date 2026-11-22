@@ -298,4 +298,20 @@ describe('LogsDialog', () => {
             expect(screen.getByRole('tab', { name: 'Suwayomi' })).toHaveFocus();
         });
     });
+
+    it('formats displayed and copied log timestamps in the configured time zone', async () => {
+        const moment = Date.UTC(2026, 10, 11, 14, 3, 9, 42);
+        const writeText = vi.fn(() => {
+            return Promise.resolve();
+        });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'Asia/Tokyo' } });
+        snapshotOf({ 'yt-dlp': [{ id: 1, at: moment, stream: 'stdout', text: 'ready' }] });
+        const { user } = setup();
+        stubClipboard(writeText);
+        const list = await screen.findByRole('list');
+        expect(list.querySelector('.log-line__time')?.textContent).toBe('23:03:09.042');
+
+        await user.click(screen.getByRole('button', { name: 'COPY' }));
+        expect(writeText).toHaveBeenCalledWith('23:03:09.042 [stdout] ready');
+    });
 });

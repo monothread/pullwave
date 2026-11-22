@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import type { MessageKey } from '@shared/i18n';
+import { zonedHour } from '@shared/timezone';
 import { CountUp } from '../fx/CountUp';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useShownHistory } from '../hooks/useShownManga';
 import { useClock } from '../hooks/useClock';
 import { useTranslator } from '../i18n/useTranslator';
@@ -22,6 +24,7 @@ export const STAT_LINES: readonly StatLine[] = [
 
 export function StatsCard() {
     const t = useTranslator();
+    const timeZone = useAppTimeZone();
     const now = useClock();
     const history = useAppStore((state) => {
         return state.history;
@@ -31,10 +34,10 @@ export function StatsCard() {
     });
     const readingHistory = useShownHistory();
     const moment = now.getTime();
-    const period = greetingPeriod(now.getHours());
+    const period = greetingPeriod(zonedHour(moment, timeZone));
     const input = useMemo(() => {
-        return { history, animeHistory, readingHistory, now: moment };
-    }, [history, animeHistory, readingHistory, moment]);
+        return { history, animeHistory, readingHistory, now: moment, timeZone };
+    }, [history, animeHistory, readingHistory, moment, timeZone]);
     const stats = useMemo(() => {
         return weekStats(input);
     }, [input]);

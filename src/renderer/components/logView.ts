@@ -1,4 +1,5 @@
 import { LOG_LINE_LIMIT, type LogLine } from '@shared/logs';
+import { machineTimeZone, wallClockOf } from '@shared/timezone';
 import { logLevelOf, stripAnsiCodes } from './logHighlight';
 
 export type LogFilter = 'all' | 'warnings' | 'errors';
@@ -36,15 +37,16 @@ function twoDigits(value: number): string {
     return String(value).padStart(2, '0');
 }
 
-export function formatLogTime(at: number): string {
-    const date = new Date(at);
-    return `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}:${twoDigits(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`;
+export function formatLogTime(at: number, timeZone: string = machineTimeZone()): string {
+    const { hour, minute, second } = wallClockOf(at, timeZone);
+    const milliseconds = ((Math.trunc(at) % 1000) + 1000) % 1000;
+    return `${twoDigits(hour)}:${twoDigits(minute)}:${twoDigits(second)}.${String(milliseconds).padStart(3, '0')}`;
 }
 
-export function formatLogText(lines: readonly LogLine[]): string {
+export function formatLogText(lines: readonly LogLine[], timeZone: string = machineTimeZone()): string {
     return lines
         .map((line) => {
-            return `${formatLogTime(line.at)} [${line.stream}] ${stripAnsiCodes(line.text)}`;
+            return `${formatLogTime(line.at, timeZone)} [${line.stream}] ${stripAnsiCodes(line.text)}`;
         })
         .join('\n');
 }

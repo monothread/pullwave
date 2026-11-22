@@ -1,11 +1,13 @@
 import { useIncrementalList } from '../hooks/useIncrementalList';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { ListMore } from './ListMore';
 import { useEffect, useState } from 'react';
 import type { ArrivalOrigin, MangaCheckState, MangaUpdateEntry } from '@shared/manga';
 import type { MessageKey, Translator } from '@shared/i18n';
-import { useTranslator } from '../i18n/useTranslator';
+import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { MangaCover } from './MangaCover';
+import { createDayLabeler, formatShortTime } from './dateFormat';
 import { LibraryCard } from '../library/LibraryCard';
 import { MangaRemove } from './MangaRemove';
 import { chapterLabel, chapterStatusKey, groupByDay } from './mangaText';
@@ -17,8 +19,6 @@ const ORIGIN_KEYS: Record<ArrivalOrigin, MessageKey> = {
     move: 'manga.recent.origin.move'
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function checkButtonLabel(asked: boolean, state: MangaCheckState, t: Translator): string {
     if (state.running && state.total > 0) {
         return t(state.origin === 'auto' ? 'manga.recent.checking.auto' : 'manga.recent.checking.progress', { done: state.done, total: state.total });
@@ -26,13 +26,10 @@ function checkButtonLabel(asked: boolean, state: MangaCheckState, t: Translator)
     return asked || state.running ? t('manga.recent.checking') : t('manga.recent.check');
 }
 
-function startOfDay(time: number): number {
-    const date = new Date(time);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
 export function MangaUpdates() {
     const t = useTranslator();
+    const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const updates = useShownUpdates();
     const checking = useMangaStore((state) => {
         return state.checkingNew;
@@ -57,19 +54,18 @@ export function MangaUpdates() {
         void loadUpdates();
     }, [loadUpdates]);
 
-    const [today] = useState(() => {
-        return startOfDay(Date.now());
+    const [openedAt] = useState(() => {
+        return Date.now();
     });
-    const dayName = (day: number): string => {
-        if (day === today) {
-            return t('manga.recent.today');
-        }
-        return day === today - DAY_MS ? t('manga.recent.yesterday') : new Date(day).toLocaleDateString();
-    };
+    const dayName = createDayLabeler(openedAt, { today: t('manga.recent.today'), yesterday: t('manga.recent.yesterday') }, language, timeZone);
     const { shown: drawn, hasMore, endRef } = useIncrementalList(updates, 'manga-updates');
-    const days = groupByDay<MangaUpdateEntry>(drawn, (entry) => {
-        return entry.foundAt;
-    });
+    const days = groupByDay<MangaUpdateEntry>(
+        drawn,
+        (entry) => {
+            return entry.foundAt;
+        },
+        timeZone
+    );
 
     return (
         <section className="manga__updates" aria-label={t('manga.nav.updates')}>
@@ -121,7 +117,7 @@ export function MangaUpdates() {
                                         onOpen={() => {
                                             void openFromUpdate(entry);
                                         }}
-                                        meta={<span className="history__meta">{`${label} · ${t('manga.recent.found', { time: new Date(entry.foundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}`}</span>}
+                                        meta={<span className="history__meta">{`${label} · ${t('manga.recent.found', { time: formatShortTime(entry.foundAt, language, timeZone) })}`}</span>}
                                         badges={
                                             <>
                                                 <span className="badge">{t(ORIGIN_KEYS[entry.origin])}</span>

@@ -44,6 +44,7 @@ describe('sanitizeSettings', () => {
             themeMode: 'light',
             themeFamily: 'nord',
             language: 'ja',
+            timeZone: 'Asia/Tokyo',
             verifyLiveEnd: false,
             verifyLiveEndSeconds: 45,
             extraArgs: '--no-mtime',
@@ -75,6 +76,18 @@ describe('sanitizeSettings', () => {
     it('keeps the manga folder empty and the format a CBZ by default', () => {
         expect(DEFAULT_SETTINGS).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
         expect(sanitizeSettings({})).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
+    });
+
+    it('follows the system time zone by default and validates explicit IANA zones', () => {
+        expect(DEFAULT_SETTINGS.timeZone).toBe('device');
+        expect(sanitizeSettings({}).timeZone).toBe('device');
+        expect(sanitizeSettings({ timeZone: 'device' }).timeZone).toBe('device');
+        expect(sanitizeSettings({ timeZone: '  Asia/Tokyo  ' }).timeZone).toBe('Asia/Tokyo');
+        expect(sanitizeSettings({ timeZone: 'UTC' }).timeZone).toBe('UTC');
+    });
+
+    it.each(['Mars/Base', '', '   ', 'UTC+9', 42, null, {}])('falls back to device time zone for invalid value %j', (timeZone) => {
+        expect(sanitizeSettings({ timeZone }).timeZone).toBe('device');
     });
 
     it('does not install the helper for Cloudflare by itself', () => {

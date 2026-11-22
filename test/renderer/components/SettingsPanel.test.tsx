@@ -55,6 +55,7 @@ describe('SettingsPanel layout', () => {
         });
         expect(screen.getByLabelText('Light or dark mode')).toHaveValue('device');
         expect(screen.getByLabelText('Language')).toHaveValue('device');
+        expect(screen.getByLabelText('Time zone')).toHaveValue('device');
         expect(screen.getByLabelText('Keep running in the system tray when the window is closed')).not.toBeChecked();
         expect(screen.getByLabelText('Check for updates on startup')).toBeChecked();
         expect(screen.queryByLabelText('Download folder')).not.toBeInTheDocument();
@@ -71,6 +72,7 @@ describe('SettingsPanel layout', () => {
         });
         expect(screen.queryByLabelText('Light or dark mode')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Time zone')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Check for updates on startup')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Download folder')).toHaveValue('');
@@ -99,6 +101,7 @@ describe('SettingsPanel layout', () => {
         expect(screen.queryByLabelText('Anime audio')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Download folder')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Light or dark mode')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Time zone')).not.toBeInTheDocument();
     });
 
     it.each(['global', 'downloads', 'anime'] as const)('has no save button and explains that changes are saved automatically in the %s settings', (scope) => {
@@ -159,9 +162,39 @@ describe('SettingsPanel language', () => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
         expect(screen.getByLabelText('Idioma')).toHaveValue('pt');
+        expect(screen.getByLabelText('Fuso horário')).toHaveValue('device');
         expect(screen.getByLabelText('Modo claro ou escuro')).toBeInTheDocument();
         expect(screen.getByText('As alterações são salvas automaticamente.')).toBeInTheDocument();
     });
+});
+
+describe('SettingsPanel time zone', () => {
+    it('lists device first and readable IANA time zones with a hint', () => {
+        render(<SettingsPanel scope="global" />);
+        const select = screen.getByLabelText('Time zone');
+        expect(select).toHaveValue('device');
+        const options = Array.from(select.querySelectorAll('option'));
+        expect(options[0]).toHaveAttribute('value', 'device');
+        expect(options[0]).toHaveTextContent('Device (follows the system)');
+        expect(within(select).getByRole('option', { name: 'America/Sao Paulo' })).toHaveValue('America/Sao_Paulo');
+        expect(within(select).getByRole('option', { name: 'Asia/Tokyo' })).toHaveValue('Asia/Tokyo');
+        expect(within(select).getByRole('option', { name: 'UTC' })).toHaveValue('UTC');
+        expect(screen.getByText('Device uses the time zone of your system. Applies to dates and times across the app.')).toBeInTheDocument();
+    });
+
+    it.each(['Asia/Tokyo', 'America/Sao_Paulo', 'UTC', 'device'])('saves right away when the time zone changes to "%s"', async (timeZone) => {
+        if (timeZone === 'device') {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'UTC' } });
+        }
+        render(<SettingsPanel scope="global" />);
+        fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: timeZone } });
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, timeZone });
+    });
+});
+
+describe('SettingsPanel language in other scopes', () => {
 
     it('renders the sections of the video downloader in the saved language', () => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
@@ -848,7 +881,7 @@ describe('SettingsPanel theme', () => {
         const labels = Array.from(screen.getByText('APPEARANCE & WINDOW').closest('fieldset')?.querySelectorAll('select') ?? []).map((select) => {
             return select.getAttribute('aria-label');
         });
-        expect(labels).toEqual(['Light or dark mode', 'Theme', 'Language']);
+        expect(labels).toEqual(['Light or dark mode', 'Theme', 'Language', 'Time zone']);
         expect(screen.getByText('System follows the light or dark mode of your computer and switches as soon as it changes. Saved and restored the next time the app opens.')).toBeInTheDocument();
         expect(screen.getByText('Every theme has a light and a dark version; the mode picks which one is shown.')).toBeInTheDocument();
         expect(screen.queryByLabelText('Dark theme')).not.toBeInTheDocument();

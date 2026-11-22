@@ -1,5 +1,6 @@
 import type { AnimeHistoryEntry } from '@shared/anime';
 import type { ReadingEntry } from '@shared/manga';
+import { machineTimeZone, zonedDayNumber } from '@shared/timezone';
 import type { HistoryEntry } from '@shared/types';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -17,11 +18,11 @@ export interface StatsInput {
     animeHistory: readonly AnimeHistoryEntry[];
     readingHistory: readonly ReadingEntry[];
     now: number;
+    timeZone?: string;
 }
 
-export function dayNumber(moment: number): number {
-    const date = new Date(moment);
-    return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
+export function dayNumber(moment: number, timeZone: string = machineTimeZone()): number {
+    return zonedDayNumber(moment, timeZone);
 }
 
 function finishedDownloads(history: readonly HistoryEntry[]): number[] {
@@ -56,13 +57,13 @@ function inLastWeek(moments: readonly number[], now: number): number {
     }).length;
 }
 
-export function streakDays(moments: readonly number[], now: number): number {
+export function streakDays(moments: readonly number[], now: number, timeZone: string = machineTimeZone()): number {
     const days = new Set(
         moments.map((moment) => {
-            return dayNumber(moment);
+            return dayNumber(moment, timeZone);
         })
     );
-    const today = dayNumber(now);
+    const today = dayNumber(now, timeZone);
     let cursor = days.has(today) ? today : today - 1;
     let streak = 0;
     while (days.has(cursor)) {
@@ -72,7 +73,7 @@ export function streakDays(moments: readonly number[], now: number): number {
     return streak;
 }
 
-export function weekStats({ history, animeHistory, readingHistory, now }: StatsInput): WeekStats {
+export function weekStats({ history, animeHistory, readingHistory, now, timeZone = machineTimeZone() }: StatsInput): WeekStats {
     const downloads = finishedDownloads(history);
     const watched = watchedEpisodes(animeHistory);
     const read = chaptersRead(readingHistory);
@@ -80,7 +81,7 @@ export function weekStats({ history, animeHistory, readingHistory, now }: StatsI
         downloads: inLastWeek(downloads, now),
         watched: inLastWeek(watched, now),
         read: inLastWeek(read, now),
-        streak: streakDays([...downloads, ...watched, ...read], now)
+        streak: streakDays([...downloads, ...watched, ...read], now, timeZone)
     };
 }
 

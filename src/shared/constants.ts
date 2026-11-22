@@ -390,6 +390,7 @@ export const DEFAULT_SETTINGS: Settings = {
     themeMode: 'device',
     themeFamily: 'default',
     language: 'device',
+    timeZone: 'device',
     extraArgs: '',
     animeDownloadDir: '',
     animeQuality: 'best',

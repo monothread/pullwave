@@ -80,11 +80,28 @@ describe('formatLogTime', () => {
         expect(formatLogTime(AT)).toBe('14:03:09.042');
         expect(formatLogTime(new Date(2026, 0, 1, 0, 0, 0, 0).getTime())).toBe('00:00:00.000');
     });
+
+    it('formats log timestamps in the requested time zone including midnight and pre-epoch timestamps', () => {
+        const instant = Date.UTC(2026, 10, 11, 15, 3, 9, 42);
+        expect(formatLogTime(instant, 'UTC')).toBe('15:03:09.042');
+        expect(formatLogTime(instant, 'Asia/Tokyo')).toBe('00:03:09.042');
+        expect(formatLogTime(instant, 'America/Sao_Paulo')).toBe('12:03:09.042');
+        expect(formatLogTime(-250, 'UTC')).toBe('23:59:59.750');
+    });
 });
 
 describe('formatLogText', () => {
     it('gives one line of text per line, with its time and stream, without the codes of the terminal', () => {
         expect(formatLogText([line(1, 'yt-dlp -v', 'command'), line(2, `${ESC}[31mERROR:${ESC}[0m x`, 'stderr')])).toBe('14:03:09.042 [command] yt-dlp -v\n14:03:09.042 [stderr] ERROR: x');
+    });
+
+    it('formats every line using the requested time zone', () => {
+        const instant = Date.UTC(2026, 10, 11, 14, 3, 9, 42);
+        const entries: LogLine[] = [
+            { id: 1, at: instant, stream: 'command', text: 'yt-dlp -v' },
+            { id: 2, at: instant, stream: 'stderr', text: `${ESC}[31mERROR:${ESC}[0m x` }
+        ];
+        expect(formatLogText(entries, 'Asia/Tokyo')).toBe('23:03:09.042 [command] yt-dlp -v\n23:03:09.042 [stderr] ERROR: x');
     });
 
     it('gives an empty text for no lines', () => {

@@ -99,6 +99,12 @@ describe('HistoryList', () => {
         expect(mock.api.clearHistory).not.toHaveBeenCalled();
         expect(useAppStore.getState().history).toEqual([DONE]);
     });
+
+    it('formats completion timestamps in the configured time zone', () => {
+        useAppStore.setState({ settings: { ...initial.settings, language: 'en', timeZone: 'Asia/Tokyo' }, history: [DONE] });
+        render(<HistoryList />);
+        expect(screen.getByText(`COMPLETE · ${new Date(DONE.finishedAt).toLocaleString('en', { timeZone: 'Asia/Tokyo' })}`)).toBeInTheDocument();
+    });
 });
 
 describe('HistoryList with a long history', () => {

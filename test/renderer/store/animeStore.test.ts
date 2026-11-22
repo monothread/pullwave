@@ -37,7 +37,7 @@ describe('useAnimeStore initial state', () => {
         expect(initialAnime.subtitleJobs).toEqual([]);
         expect(initialAnime.view).toBe('schedule');
         expect(initialAnime.returnView).toBe('schedule');
-        expect(initialAnime.schedule).toEqual({ status: 'idle', entries: [], error: null, view: 'day', timeZone: machineTimeZone(), limits: [] });
+        expect(initialAnime.schedule).toEqual({ status: 'idle', entries: [], error: null, view: 'day', limits: [] });
         expect(initialAnime.jobs).toEqual([]);
         expect(initialAnime.queueHeld).toBe(false);
         expect(initialAnime.library).toEqual([]);
@@ -1923,8 +1923,9 @@ describe('the schedule', () => {
     const FRIEREN = makeScheduleEntry();
     const DANDADAN = makeScheduleEntry({ anilistId: 2, title: 'Dandadan', names: ['Dandadan', 'Dan Da Dan'], episode: 3, airingAt: 1_700_043_600 });
 
-    function setSchedule(overrides: Partial<AnimeScheduleState> = {}): void {
-        useAnimeStore.setState({ schedule: { ...INITIAL_SCHEDULE, timeZone: TOKYO, ...overrides } });
+    function setSchedule(overrides: Partial<AnimeScheduleState> = {}, timeZone: string = TOKYO): void {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone } });
+        useAnimeStore.setState({ schedule: { ...INITIAL_SCHEDULE, ...overrides } });
     }
 
     beforeEach(() => {
@@ -1943,13 +1944,13 @@ describe('the schedule', () => {
             const limits = zonedDayLimits(NOW.getTime(), TOKYO, 1);
 
             const loading = useAnimeStore.getState().loadSchedule();
-            expect(useAnimeStore.getState().schedule).toEqual({ status: 'loading', entries: [], error: null, view: 'day', timeZone: TOKYO, limits });
+            expect(useAnimeStore.getState().schedule).toEqual({ status: 'loading', entries: [], error: null, view: 'day', limits });
             await loading;
 
             expect(limits).toEqual([1_791_039_600, 1_791_126_000]);
             expect(mock.api.listAnimeSchedule).toHaveBeenCalledTimes(1);
             expect(mock.api.listAnimeSchedule).toHaveBeenCalledWith({ from: 1_791_039_600, to: 1_791_126_000, refresh: false });
-            expect(useAnimeStore.getState().schedule).toEqual({ status: 'ready', entries: [FRIEREN, DANDADAN], error: null, view: 'day', timeZone: TOKYO, limits });
+            expect(useAnimeStore.getState().schedule).toEqual({ status: 'ready', entries: [FRIEREN, DANDADAN], error: null, view: 'day', limits });
         });
 
         it('asks for the seven days that start with today in the week view', async () => {
@@ -1963,23 +1964,35 @@ describe('the schedule', () => {
             expect(useAnimeStore.getState().schedule.limits).toEqual(limits);
         });
 
-        it('counts the days in the time zone that is set, not in the one of the machine', async () => {
-            setSchedule({ timeZone: 'America/Sao_Paulo' });
+        it('counts the days in the time zone from app settings, falling back to machine time zone for device', async () => {
+            setSchedule({}, 'America/Sao_Paulo');
 
             await useAnimeStore.getState().loadSchedule();
 
             expect(mock.api.listAnimeSchedule).toHaveBeenCalledWith({ from: 1_790_996_400, to: 1_791_082_800, refresh: false });
+
+            setSchedule({}, 'device');
+            await useAnimeStore.getState().loadSchedule();
+            const machineLimits = zonedDayLimits(NOW.getTime(), machineTimeZone(), 1);
+            expect(mock.api.listAnimeSchedule).toHaveBeenLastCalledWith({ from: machineLimits[0], to: machineLimits[1], refresh: false });
         });
 
-        it('keeps what is on the screen while it is listed again', async () => {
-            setSchedule({ status: 'ready', entries: [FRIEREN] });
+        it('keeps what is on the screen while it is listed again for the same period and clears stale entries when the time zone changes', async () => {
+            const tokyoLimits = zonedDayLimits(NOW.getTime(), TOKYO, 1);
+            setSchedule({ status: 'ready', entries: [FRIEREN], limits: tokyoLimits });
             mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [DANDADAN] });
 
             const loading = useAnimeStore.getState().loadSchedule();
             expect(useAnimeStore.getState().schedule.entries).toEqual([FRIEREN]);
             expect(useAnimeStore.getState().schedule.status).toBe('loading');
             await loading;
+            expect(useAnimeStore.getState().schedule.entries).toEqual([DANDADAN]);
 
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'America/Sao_Paulo' } });
+            const reloaded = useAnimeStore.getState().loadSchedule();
+            expect(useAnimeStore.getState().schedule.entries).toEqual([]);
+            expect(useAnimeStore.getState().schedule.status).toBe('loading');
+            await reloaded;
             expect(useAnimeStore.getState().schedule.entries).toEqual([DANDADAN]);
         });
 
@@ -2014,69 +2027,28 @@ describe('the schedule', () => {
         });
     });
 
-    describe('setScheduleView and setScheduleTimeZone', () => {
+    describe('setScheduleView', () => {
         beforeEach(() => {
             window.localStorage.clear();
         });
 
-        it('keep the choice of the time zone for the next time, but not the one of the view', () => {
+        it('does not persist the view choice and always starts on day', async () => {
             useAnimeStore.getState().setScheduleView('week');
-            useAnimeStore.getState().setScheduleTimeZone('Europe/Lisbon');
-
             expect(window.localStorage.getItem('pullwave-schedule-view')).toBeNull();
-            expect(window.localStorage.getItem('pullwave-schedule-time-zone')).toBe('Europe/Lisbon');
-        });
 
-        it('start the store on the day, with the time zone that was chosen the last time', async () => {
-            window.localStorage.setItem('pullwave-schedule-time-zone', 'Europe/Lisbon');
-            vi.resetModules();
-
-            const fresh = await import('@renderer/store/animeStore');
-
-            expect(fresh.useAnimeStore.getState().schedule).toEqual({ ...fresh.INITIAL_SCHEDULE, view: 'day', timeZone: 'Europe/Lisbon' });
-        });
-
-        it('start the store on the day even when an older version saved the week', async () => {
             window.localStorage.setItem('pullwave-schedule-view', 'week');
             vi.resetModules();
 
             const fresh = await import('@renderer/store/animeStore');
-
-            expect(fresh.useAnimeStore.getState().schedule).toEqual({ ...fresh.INITIAL_SCHEDULE, view: 'day', timeZone: machineTimeZone() });
+            expect(fresh.useAnimeStore.getState().schedule).toEqual({ ...fresh.INITIAL_SCHEDULE, view: 'day' });
         });
 
-        it('start the store with the day and the time zone of the machine when nothing was chosen', async () => {
-            vi.resetModules();
-
-            const fresh = await import('@renderer/store/animeStore');
-
-            expect(fresh.useAnimeStore.getState().schedule).toEqual({ ...fresh.INITIAL_SCHEDULE, view: 'day', timeZone: machineTimeZone() });
-        });
-
-        it('start the store with the machine time zone when the one that was chosen does not exist', async () => {
-            window.localStorage.setItem('pullwave-schedule-view', 'week');
-            window.localStorage.setItem('pullwave-schedule-time-zone', 'Mars/Olympus');
-            vi.resetModules();
-
-            const fresh = await import('@renderer/store/animeStore');
-
-            expect(fresh.useAnimeStore.getState().schedule).toMatchObject({ view: 'day', timeZone: machineTimeZone() });
-        });
-
-        it('change the view and clear what was listed for the other one', () => {
+        it('changes the view and clears what was listed for the other one', () => {
             setSchedule({ status: 'ready', entries: [FRIEREN] });
 
             useAnimeStore.getState().setScheduleView('week');
 
-            expect(useAnimeStore.getState().schedule).toMatchObject({ view: 'week', timeZone: TOKYO, entries: [], status: 'ready' });
-        });
-
-        it('change the time zone and clear what was listed for the other one', () => {
-            setSchedule({ status: 'ready', entries: [FRIEREN], view: 'week' });
-
-            useAnimeStore.getState().setScheduleTimeZone('Europe/Lisbon');
-
-            expect(useAnimeStore.getState().schedule).toMatchObject({ view: 'week', timeZone: 'Europe/Lisbon', entries: [], status: 'ready' });
+            expect(useAnimeStore.getState().schedule).toMatchObject({ view: 'week', entries: [], status: 'ready' });
         });
     });
 

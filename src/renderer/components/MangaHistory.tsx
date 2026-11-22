@@ -1,25 +1,22 @@
 import { useIncrementalList } from '../hooks/useIncrementalList';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { ListMore } from './ListMore';
 import { useEffect, useState } from 'react';
-import { useTranslator } from '../i18n/useTranslator';
+import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { MangaCover } from './MangaCover';
 import { ConfirmButton } from './ConfirmButton';
+import { createDayLabeler } from './dateFormat';
 import { LibraryCard } from '../library/LibraryCard';
 import { MangaRemove } from './MangaRemove';
 import { chapterLabel, groupByDay } from './mangaText';
 import type { ReadingEntry } from '@shared/manga';
 import { useShownHistory } from '../hooks/useShownManga';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function startOfDay(time: number): number {
-    const date = new Date(time);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
 export function MangaHistory() {
     const t = useTranslator();
+    const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const history = useShownHistory();
     const loadHistory = useMangaStore((state) => {
         return state.loadHistory;
@@ -38,19 +35,18 @@ export function MangaHistory() {
         void loadHistory();
     }, [loadHistory]);
 
-    const [today] = useState(() => {
-        return startOfDay(Date.now());
+    const [openedAt] = useState(() => {
+        return Date.now();
     });
-    const dayName = (day: number): string => {
-        if (day === today) {
-            return t('manga.recent.today');
-        }
-        return day === today - DAY_MS ? t('manga.recent.yesterday') : new Date(day).toLocaleDateString();
-    };
+    const dayName = createDayLabeler(openedAt, { today: t('manga.recent.today'), yesterday: t('manga.recent.yesterday') }, language, timeZone);
     const { shown: drawn, hasMore, endRef } = useIncrementalList(history, 'manga-history');
-    const days = groupByDay<ReadingEntry>(drawn, (entry) => {
-        return entry.readAt;
-    });
+    const days = groupByDay<ReadingEntry>(
+        drawn,
+        (entry) => {
+            return entry.readAt;
+        },
+        timeZone
+    );
 
     return (
         <section className="manga__history" aria-label={t('manga.nav.history')}>

@@ -60,6 +60,22 @@ describe('TopBarClock', () => {
         expect(clock).toHaveTextContent('14:06');
         expect(clock).toHaveAttribute('datetime', '14:06');
     });
+
+    it('displays the time and datetime attribute in the configured time zone', () => {
+        vi.setSystemTime(new Date(Date.UTC(2026, 10, 1, 14, 5, 0)));
+        useAppStore.setState({ ...initial, settings: { ...DEFAULT_SETTINGS, language: 'pt', timeZone: 'Asia/Tokyo' } });
+        render(<TopBarClock />);
+        const tokyo = screen.getByLabelText('Hora: 23:05');
+        expect(tokyo).toHaveTextContent('23:05');
+        expect(tokyo).toHaveAttribute('datetime', '23:05');
+
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt', timeZone: 'America/Sao_Paulo' } });
+        });
+        const saoPaulo = screen.getByLabelText('Hora: 11:05');
+        expect(saoPaulo).toHaveTextContent('11:05');
+        expect(saoPaulo).toHaveAttribute('datetime', '11:05');
+    });
 });
 
 describe('TopBarClock: the flipping digits', () => {

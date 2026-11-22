@@ -1,12 +1,15 @@
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { LibraryCard } from '../library/LibraryCard';
 import { AnimeCover } from './AnimeCover';
 import { ConfirmButton } from './ConfirmButton';
+import { formatDateTime } from './dateFormat';
 
 export function AnimeHistory() {
     const t = useTranslator();
     const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const history = useAnimeStore((state) => {
         return state.history;
     });
@@ -52,7 +55,7 @@ export function AnimeHistory() {
                             meta={
                                 <span className="history__meta">
                                     {entry.episode !== null && `${t('anime.history.episode', { episode: entry.episode })} · `}
-                                    {new Date(entry.openedAt).toLocaleString(language)}
+                                    {formatDateTime(entry.openedAt, language, timeZone)}
                                 </span>
                             }
                             actions={

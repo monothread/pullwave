@@ -22,6 +22,14 @@ describe('formatClock', () => {
     it('never shows the seconds', () => {
         expect(formatClock(afternoon, 'pt')).not.toContain('30');
     });
+
+    it('formats the clock in the requested time zone', () => {
+        const instant = new Date(Date.UTC(2026, 10, 1, 14, 5, 0));
+        expect(formatClock(instant, 'pt', 'UTC')).toBe('14:05');
+        expect(formatClock(instant, 'pt', 'Asia/Tokyo')).toBe('23:05');
+        expect(formatClock(instant, 'pt', 'America/Sao_Paulo')).toBe('11:05');
+        expect(formatClock(instant, 'en', 'Asia/Tokyo')).toMatch(/^11:05\sPM$/);
+    });
 });
 
 describe('clockDatetime', () => {
@@ -32,5 +40,12 @@ describe('clockDatetime', () => {
         [new Date(2026, 10, 1, 23, 59, 59), '23:59']
     ])('writes %s as %s', (date, expected) => {
         expect(clockDatetime(date)).toBe(expected);
+    });
+
+    it('writes the 24-hour datetime attribute in the requested time zone', () => {
+        const instant = new Date(Date.UTC(2026, 10, 1, 15, 5, 0));
+        expect(clockDatetime(instant, 'UTC')).toBe('15:05');
+        expect(clockDatetime(instant, 'Asia/Tokyo')).toBe('00:05');
+        expect(clockDatetime(instant, 'America/Sao_Paulo')).toBe('12:05');
     });
 });

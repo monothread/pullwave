@@ -1,6 +1,7 @@
 import type { AniError, AniErrorCode, AnimeAudioCheckSummary, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeHistoryEntry, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries, MAX_SEASON } from '@shared/series';
+import { groupByZonedDay, isSameZonedDay, machineTimeZone, startOfZonedDay } from '@shared/timezone';
 import { codedErrorReport, type ErrorReport } from './errorReport';
 
 export const MIN_RESUME_SECONDS = 5;
@@ -305,33 +306,21 @@ export function activeJobCount(jobs: readonly AnimeJob[]): number {
     }).length;
 }
 
-export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number): Array<{ day: number; entries: T[] }> {
-    const groups: Array<{ day: number; entries: T[] }> = [];
-    entries.forEach((entry) => {
-        const date = new Date(timeOf(entry));
-        const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-        const last = groups.at(-1);
-        if (last !== undefined && last.day === day) {
-            last.entries.push(entry);
-        } else {
-            groups.push({ day, entries: [entry] });
-        }
-    });
-    return groups;
+export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number, timeZone: string = machineTimeZone()): Array<{ day: number; entries: T[] }> {
+    return groupByZonedDay(entries, timeOf, timeZone);
 }
 
-export function startOfDay(time: number): number {
-    const date = new Date(time);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+export function startOfDay(time: number, timeZone: string = machineTimeZone()): number {
+    return startOfZonedDay(time, timeZone);
 }
 
-export function isNewEpisode(episode: Pick<AnimeEpisodeRecord, 'addedAt'>, now: number = Date.now()): boolean {
-    return episode.addedAt !== null && startOfDay(episode.addedAt) === startOfDay(now);
+export function isNewEpisode(episode: Pick<AnimeEpisodeRecord, 'addedAt'>, now: number = Date.now(), timeZone: string = machineTimeZone()): boolean {
+    return episode.addedAt !== null && isSameZonedDay(episode.addedAt, now, timeZone);
 }
 
-export function newEpisodeCount(anime: Pick<LibraryAnime, 'episodes'>, now: number = Date.now()): number {
+export function newEpisodeCount(anime: Pick<LibraryAnime, 'episodes'>, now: number = Date.now(), timeZone: string = machineTimeZone()): number {
     return anime.episodes.filter((episode) => {
-        return isNewEpisode(episode, now);
+        return isNewEpisode(episode, now, timeZone);
     }).length;
 }
 

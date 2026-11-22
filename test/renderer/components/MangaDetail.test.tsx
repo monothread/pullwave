@@ -1417,6 +1417,30 @@ describe('MangaDetail the chapters that are new today', () => {
         expect(within(rows[1]!).queryByText('NEW')).not.toBeInTheDocument();
         expect(within(rows[2]!).queryByText('NEW')).not.toBeInTheDocument();
     });
+
+    it('formats chapter dates and determines the NEW badge using the configured time zone', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+            const chapterMoment = Date.UTC(2026, 9, 7, 14, 30, 0);
+            vi.setSystemTime(now);
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'en', timeZone: 'Asia/Tokyo' } });
+            useMangaStore.setState({
+                library: [
+                    makeLibraryManga([
+                        makeChapterRecord({ id: 1, remoteId: 11, status: 'idle', dateUploaded: chapterMoment, addedAt: chapterMoment })
+                    ])
+                ]
+            });
+            open({ chapters: [makeChapter({ remoteId: 11, name: 'Romance Dawn', number: 1, scanlator: 'Group A', dateUploaded: chapterMoment })] });
+            render(<MangaDetail />);
+            const row = screen.getByTestId('manga-chapter');
+            expect(within(row).getByText(`Group A · ${new Date(chapterMoment).toLocaleDateString('en', { timeZone: 'Asia/Tokyo' })}`)).toBeInTheDocument();
+            expect(within(row).queryByText('NEW')).not.toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
 
 describe('MangaDetail looking at the source in the background', () => {

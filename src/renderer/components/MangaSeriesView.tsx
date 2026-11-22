@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { LibraryManga } from '@shared/manga';
 import { cleanSeriesName } from '@shared/series';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
@@ -79,6 +80,7 @@ interface MangaSeriesViewProps {
 
 export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewProps) {
     const t = useTranslator();
+    const timeZone = useAppTimeZone();
     const removeManga = useMangaStore((state) => {
         return state.removeManga;
     });
@@ -196,7 +198,7 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                                     <div className="cover-card__footer">
                                         <span className="job__badges">
                                             <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
-                                            <NewChaptersBadge count={newChapterCount([manga])} />
+                                            <NewChaptersBadge count={newChapterCount([manga], undefined, timeZone)} />
                                         </span>
                                         <div className="job__actions library__footer">
                                             <ConfirmButton

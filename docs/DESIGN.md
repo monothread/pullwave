@@ -32,7 +32,7 @@ The map was made from the components (`src/renderer/components`), the stores, th
 - SETTINGS (gear of the section): output (folder, max title length, restricted file names, delete partial files on failure), quality (max resolution, container, audio only, audio format), subtitles (playlist, write, languages, automatic, embed), live (from start, wait, verify the end and its seconds), cookies (from a browser, browser, profile, rescan), advanced (rate limit, yt-dlp path, ffmpeg path, JS runtime, extra arguments), status of the programs (versions, update), automatic save (saved / unsaved / saving / error).
 
 ### Anime
-- SCHEDULE: DAY or WEEK, time zone, search in the schedule, cover cards with episode and time, today marked, add or view in library.
+- SCHEDULE: DAY or WEEK (using the global time zone), search in the schedule, cover cards with episode and time, today marked, add or view in library.
 - SEARCH: name, results with covers (the qualifier of two results with the same title), OPEN, the next results as the list is scrolled to its end (up to 120, then it asks to make the search more specific); detail of an anime: episodes as chips, watch without downloading (stream player), ADD TO LIBRARY (series and order window) / VIEW IN LIBRARY.
 - LIBRARY: the carousel of highlights, then the chips ALL / NEW (last 7 days) / ONGOING / COMPLETE (whether the releases are over), the order (recently added, last watched or A–Z) and the grid of cards of anime and series (cover, seasons, downloaded episodes, NEW EPISODE, COMPLETE), search in the library, screen of a series (no cover of its own: seasons as cards, edit series, take out of a series), screen of a season (episodes as cards: download, play, remove, watched mark, missing file mark, NO AUDIO mark, DOWNLOAD AGAIN; DOWNLOAD ALL, TRANSLATE SUBTITLES, Releases field: automatic / complete / ongoing), the gear menu of a card (series, remove).
 - UPDATES: new episodes as the cards of the library (cover, title, episode and when it was found, origin and state as badges), split by day, LOOK FOR NEW EPISODES (blocked while a look goes on, with how far it is), CLEAR LIST.
@@ -51,7 +51,7 @@ The map was made from the components (`src/renderer/components`), the stores, th
 - UPDATES (new chapters as the cards of the library, with the chapter, when it was found, the origin and the state as badges, split by day) and HISTORY (the mangas read, as the cards of the library, with the chapter and the page it was left on, IN THE LIBRARY and REMOVE; split by day), downloads (three sources × three chapters, PAUSE ALL / RESUME ALL), EXTENSIONS (stores, install, update every extension, incompatible ones, about), SETTINGS (folder and migrate, CBZ or folder, FlareSolverr address, adult sources, language, look for new chapters, download them by themselves, the browser that opens a site, the health of the server and the helper).
 
 ### Global settings
-- Appearance and window: theme mode (System / Dark / Light) and 19 theme families (38 themes total), language (Device + 5), the volume of the sounds, close to tray, launch at login, start minimized.
+- Appearance and window: theme mode (System / Dark / Light) and 19 theme families (38 themes total), language (Device + 5), time zone (Device + IANA zones, applied to all dates and times across the app), the volume of the sounds, close to tray, launch at login, start minimized.
 - App updates: check now, check on start. The disclaimer link.
 
 ## 2. Design system
@@ -73,7 +73,7 @@ Style sheets, loaded in this order after `cyberpunk.css`, `themes.css` and `resp
 | `--bp-aurora-*` | accents at 10–22 % | The aurora behind the screen; off in AMOLED and high contrast, pale in the light themes |
 
 Pieces:
-- **Top bar:** the wave of five bars beside the name, the clock (`TopBarClock`, `<time>`, refreshed every 5 s, in the format of the language), the chips as pills.
+- **Top bar:** the wave of five bars beside the name, the clock (`TopBarClock`, `<time>`, refreshed every 5 s, in the format of the language and configured time zone), the chips as pills.
 - **Navigation:** big labels (16 px, bold) with a picture (`SectionIcon`: download, screen with play, open book) hidden from the screen readers; the bar under the active section grows from the middle with a spring; the picture hops when pointed at and when chosen; the gear turns. On a window of 760 px or less the pictures go and the tabs keep their old size; at 520 px the wave goes too.
 - **Boxes:** rounded corners, soft shadow, accent border on hover. They never keep a transform (a window fixed to the screen inside them would move into the box): they come in with opacity, or with a rise that ends with no transform.
 - **Tiles of covers:** rounded cover, brighter and ringed on hover or focus, a light that sweeps over the tile. One card (`LibraryCard`, D-163) for the libraries, UPDATES and HISTORY of both sections: the cover as wide as the tile, the title under it (the button that opens the card), what is said about it, the badges and the buttons at the bottom.

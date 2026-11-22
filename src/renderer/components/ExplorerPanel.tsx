@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { ExplorerEntry, ExplorerListFailure, ExplorerWriteFailure } from '@shared/explorer';
 import type { MessageKey } from '@shared/i18n';
 import { INCREMENTAL_STEP } from '../hooks/useIncrementalList';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
@@ -11,6 +12,7 @@ import { useCutStore } from '../store/cutStore';
 import { useExplorerStore } from '../store/explorerStore';
 import { useMergeStore } from '../store/mergeStore';
 import { ConfirmDialog } from './ConfirmDialog';
+import { formatDate } from './dateFormat';
 import { ExplorerMediaPlayer } from './ExplorerMediaPlayer';
 import {
     contextMenuPosition,
@@ -376,6 +378,7 @@ function EntryVisual({ entry }: { entry: ExplorerEntry }) {
 interface EntryItemProps {
     entry: ExplorerEntry;
     language: string;
+    timeZone: string;
     highlighted: boolean;
     onOpen: (entry: ExplorerEntry) => void;
     onContextMenu: (event: MouseEvent<HTMLElement>, entry: ExplorerEntry) => void;
@@ -384,7 +387,7 @@ interface EntryItemProps {
     onSendToMerge: (entry: ExplorerEntry) => void;
 }
 
-function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onSendToConvert, onSendToCut, onSendToMerge }: EntryItemProps) {
+function ExplorerItem({ entry, language, timeZone, highlighted, onOpen, onContextMenu, onSendToConvert, onSendToCut, onSendToMerge }: EntryItemProps) {
     const t = useTranslator();
     const itemRef = useRef<HTMLLIElement | null>(null);
     const kindLabel = t(`explorer.kind.${entry.kind}`);
@@ -392,9 +395,9 @@ function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onS
     const meta =
         entry.kind === 'directory'
             ? entry.modifiedAt > 0
-                ? new Date(entry.modifiedAt).toLocaleDateString(language)
+                ? formatDate(entry.modifiedAt, language, timeZone)
                 : kindLabel
-            : `${formatBytes(entry.sizeBytes)} · ${new Date(entry.modifiedAt).toLocaleDateString(language)}`;
+            : `${formatBytes(entry.sizeBytes)} · ${formatDate(entry.modifiedAt, language, timeZone)}`;
 
     useEffect(() => {
         if (highlighted && itemRef.current !== null && typeof itemRef.current.scrollIntoView === 'function') {
@@ -473,6 +476,7 @@ function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onS
 export function ExplorerPanel() {
     const t = useTranslator();
     const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const openTools = useAppStore((state) => {
         return state.openTools;
     });
@@ -998,6 +1002,7 @@ export function ExplorerPanel() {
                                             key={entry.path}
                                             entry={entry}
                                             language={language}
+                                            timeZone={timeZone}
                                             highlighted={highlightedPath === entry.path}
                                             onOpen={handleOpen}
                                             onContextMenu={openItemMenu}

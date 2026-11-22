@@ -774,3 +774,44 @@ describe('downloadedEpisodeCount', () => {
         expect(downloadedEpisodeCount([makeAnime([], { id: 1 }), makeAnime([makeEpisode({ id: 2, status: 'paused' })], { id: 2 })])).toBe(0);
     });
 });
+
+describe('animeText time zone helpers', () => {
+    it('computes startOfDay and groupByDay in the requested time zone', () => {
+        const lateUtc = Date.UTC(2026, 9, 3, 22, 30, 0);
+        const earlyNextUtc = Date.UTC(2026, 9, 4, 1, 30, 0);
+        expect(startOfDay(earlyNextUtc, 'UTC')).toBe(Date.UTC(2026, 9, 4, 0, 0, 0));
+        expect(startOfDay(earlyNextUtc, 'America/Sao_Paulo')).toBe(Date.UTC(2026, 9, 3, 3, 0, 0));
+
+        const items = [{ at: earlyNextUtc }, { at: lateUtc }];
+        expect(
+            groupByDay(
+                items,
+                (item) => {
+                    return item.at;
+                },
+                'UTC'
+            )
+        ).toHaveLength(2);
+        expect(
+            groupByDay(
+                items,
+                (item) => {
+                    return item.at;
+                },
+                'America/Sao_Paulo'
+            )
+        ).toEqual([{ day: Date.UTC(2026, 9, 3, 3, 0, 0), entries: items }]);
+    });
+
+    it('checks isNewEpisode and newEpisodeCount in the requested time zone', () => {
+        const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+        const arrived = Date.UTC(2026, 9, 7, 14, 30, 0);
+        const episode = makeEpisode({ id: 1, addedAt: arrived });
+        const anime = makeAnime([episode, makeEpisode({ id: 2, number: '2', addedAt: null })]);
+
+        expect(isNewEpisode(episode, now, 'UTC')).toBe(true);
+        expect(isNewEpisode(episode, now, 'Asia/Tokyo')).toBe(false);
+        expect(newEpisodeCount(anime, now, 'UTC')).toBe(1);
+        expect(newEpisodeCount(anime, now, 'Asia/Tokyo')).toBe(0);
+    });
+});

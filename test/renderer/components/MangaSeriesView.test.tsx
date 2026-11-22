@@ -327,4 +327,27 @@ describe('MangaSeriesView', () => {
             expect(screen.queryByLabelText('Series name')).not.toBeInTheDocument();
         });
     });
+
+    it('evaluates season new chapter badges in the configured time zone', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+            const arrived = Date.UTC(2026, 9, 7, 14, 30, 0);
+            vi.setSystemTime(now);
+            const seasonOne = makeLibraryManga([makeChapterRecord({ id: 1, dateUploaded: arrived, addedAt: arrived })], { id: 1, remoteId: 11, title: 'Frieren', series: 'Sousou no Frieren', season: 1 });
+            const seasonTwo = makeLibraryManga([], { id: 2, remoteId: 12, title: 'Frieren 2', series: 'Sousou no Frieren', season: 2 });
+            const group = groupLibrary([seasonOne, seasonTwo])[0]!;
+
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'Asia/Tokyo' } });
+            const { unmount } = render(<MangaSeriesView group={group} onBack={vi.fn()} onRenamed={vi.fn()} />);
+            expect(screen.queryByText('NEW CHAPTER')).not.toBeInTheDocument();
+            unmount();
+
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'UTC' } });
+            render(<MangaSeriesView group={group} onBack={vi.fn()} onRenamed={vi.fn()} />);
+            expect(screen.getByText('NEW CHAPTER')).toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });

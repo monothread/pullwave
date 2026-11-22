@@ -225,4 +225,13 @@ describe('ErrorDetailsDialog', () => {
         expect(within(dialog).getByRole('heading', { name: stack })).toBeInTheDocument();
         expect(within(dialog).getByText(code)).toBeInTheDocument();
     });
+
+    it('formats the occurred timestamp in the configured time zone while keeping the ISO UTC suffix', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'en', timeZone: 'Asia/Tokyo' } });
+        setup();
+        const rows = Array.from(document.querySelectorAll('.error-details__row')).map((row) => {
+            return [row.querySelector('dt')?.textContent, row.querySelector('dd')?.textContent];
+        });
+        expect(rows).toContainEqual(['When', `${new Date(1700000000000).toLocaleString('en', { timeZone: 'Asia/Tokyo' })} (2023-11-14T22:13:20.000Z)`]);
+    });
 });

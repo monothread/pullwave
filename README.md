@@ -171,7 +171,7 @@ Pullwave ships ready to run with [ani-cli](https://github.com/pystardust/ani-cli
 ### Schedule
 ![Anime airing schedule](docs/screenshots/anime-schedule.png)
 
-Browse airing episodes from AniList in **DAY** or **WEEK** view, converted to any **TIME ZONE** you pick and filterable by title or synonyms. Schedule data is cached locally for the day (**REFRESH** forces a fresh fetch), and clicking any card jumps directly to **Search**.
+Browse airing episodes from AniList in **DAY** or **WEEK** view, converted to the **Time zone** chosen in global settings and filterable by title or synonyms. Schedule data is cached locally for the day (**REFRESH** forces a fresh fetch), and clicking any card jumps directly to **Search**.
 
 ### Search & library
 
@@ -264,6 +264,7 @@ All settings save automatically. Open global **⚙ Settings** from the navigatio
   - **Neon (11):** Cyberpunk, Synthwave, Terminal, Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Ultramagenta, Pink Noir, Cyber Gold, Ice Neon.
   - **Flat (8):** Default, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED, High Contrast, Sakura.
 - **Language:** Device (auto-detected), **English**, **Português**, **Español**, **中文**, or **日本語** — switches instantaneously.
+- **Time zone:** **Device (follows the system)** or any IANA time zone — applies across every displayed date and time in the app (top bar clock, home greeting and streak, anime schedule, download/anime/manga histories and updates, media explorer dates, chapter dates and "New" badges, error details, and diagnostic logs).
 - **Audio & desktop integration:** adjustable UI sound volume, **System tray** (minimize to tray on close), **Start with the computer** (with optional start minimized to tray), and **App updates**.
 - **Diagnostics:** global and per-section settings include **VIEW LOGS** for live, color-coded, filterable output from `ffmpeg`, `yt-dlp`, `ani-cli`, `Suwayomi-Server`, and `FlareSolverr`. Logs are kept strictly in memory (up to **2,000 lines** per tool), cleared on exit, and automatically redact passwords, cookies, and API tokens as `***`.
 

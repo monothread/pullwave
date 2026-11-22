@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AnimeScheduleEntry } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
-import { selectableTimeZones } from '@shared/timezone';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore, type AnimeScheduleView } from '../store/animeStore';
 import { AnimeCover } from './AnimeCover';
 import { animeErrorKey } from './animeText';
+import { formatShortTime } from './dateFormat';
 import { SelectField, TextField } from './fields';
 import { RowLink } from './RowLink';
 import { matchesSearch } from './scheduleSearch';
@@ -26,12 +27,13 @@ function airingDate(entry: AnimeScheduleEntry, timeZone: string, language: strin
 }
 
 function airingTime(entry: AnimeScheduleEntry, timeZone: string, language: string): string {
-    return new Date(entry.airingAt * 1000).toLocaleTimeString(language, { timeZone, hour: '2-digit', minute: '2-digit' });
+    return formatShortTime(entry.airingAt * 1000, language, timeZone);
 }
 
 export function AnimeSchedule() {
     const t = useTranslator();
     const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const schedule = useAnimeStore((state) => {
         return state.schedule;
     });
@@ -41,13 +43,10 @@ export function AnimeSchedule() {
     const setView = useAnimeStore((state) => {
         return state.setScheduleView;
     });
-    const setTimeZone = useAnimeStore((state) => {
-        return state.setScheduleTimeZone;
-    });
     const openEntry = useAnimeStore((state) => {
         return state.openScheduleEntry;
     });
-    const { view, timeZone, limits, status } = schedule;
+    const { view, limits, status } = schedule;
     const [query, setQuery] = useState('');
     const searching = query.trim() !== '';
     const entries = useMemo(() => {
@@ -55,9 +54,6 @@ export function AnimeSchedule() {
             return matchesSearch(entry, query);
         });
     }, [schedule.entries, query]);
-    const timeZones = useMemo(() => {
-        return selectableTimeZones(timeZone);
-    }, [timeZone]);
 
     useEffect(() => {
         void loadSchedule(false);
@@ -86,15 +82,6 @@ export function AnimeSchedule() {
                 <SelectField label={t('anime.schedule.view.label')} value={view} options={VIEWS} formatOption={(option) => {
                     return viewLabel(option, t);
                 }} onChange={setView} />
-                <SelectField
-                    label={t('anime.schedule.timezone.label')}
-                    value={timeZone}
-                    options={timeZones}
-                    formatOption={(zone) => {
-                        return zone.replaceAll('_', ' ');
-                    }}
-                    onChange={setTimeZone}
-                />
                 <button
                     type="button"
                     className="btn"

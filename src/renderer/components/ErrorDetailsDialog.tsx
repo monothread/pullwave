@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { createPortal } from 'react-dom';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useAppStore } from '../store/appStore';
@@ -13,6 +14,7 @@ interface ErrorDetailsDialogProps {
 export function ErrorDetailsDialog({ report, onClose }: ErrorDetailsDialogProps) {
     const t = useTranslator();
     const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const titleId = useId();
     const { dialogRef, handleKeyDown } = useModalDialog(onClose, true);
     const appVersion = useAppStore((state) => {
@@ -21,7 +23,7 @@ export function ErrorDetailsDialog({ report, onClose }: ErrorDetailsDialogProps)
     const pushToast = useAppStore((state) => {
         return state.pushToast;
     });
-    const fields = errorFields(report, { appVersion, system: navigator.userAgent, language });
+    const fields = errorFields(report, { appVersion, system: navigator.userAgent, language, timeZone });
     const stack = report.details?.stack;
 
     async function copy(): Promise<void> {

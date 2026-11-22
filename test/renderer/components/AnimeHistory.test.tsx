@@ -199,4 +199,12 @@ describe('AnimeHistory cards with a cover', () => {
             }).sort()).toEqual(['Bleach', 'Naruto']);
         });
     });
+
+    it('formats opened timestamps in the configured time zone', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'en', timeZone: 'Asia/Tokyo' } });
+        useAnimeStore.setState({ history: [WATCHED] });
+        render(<AnimeHistory />);
+
+        expect(screen.getByText(`EP 12 · ${new Date(WATCHED.openedAt).toLocaleString('en', { timeZone: 'Asia/Tokyo' })}`)).toBeInTheDocument();
+    });
 });

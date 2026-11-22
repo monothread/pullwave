@@ -954,3 +954,29 @@ describe('MangaLibrary with a big library', () => {
         expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });
+
+describe('MangaLibrary new chapter badges with configured time zone', () => {
+    it('evaluates new chapters for both standalone mangas and series in the configured time zone', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+            const arrived = Date.UTC(2026, 9, 7, 14, 30, 0);
+            vi.setSystemTime(now);
+            const solo = makeLibraryManga([makeChapterRecord({ id: 1, dateUploaded: arrived, addedAt: arrived })], { id: 1, remoteId: 1, title: 'Solo Manga' });
+            const seasonOne = makeLibraryManga([makeChapterRecord({ id: 2, dateUploaded: arrived, addedAt: arrived })], { id: 2, remoteId: 2, title: 'Frieren', series: 'Frieren', season: 1 });
+            const seasonTwo = makeLibraryManga([], { id: 3, remoteId: 3, title: 'Frieren 2', series: 'Frieren', season: 2 });
+            useMangaStore.setState({ library: [solo, seasonOne, seasonTwo] });
+
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'Asia/Tokyo' } });
+            const { unmount } = render(<MangaLibrary />);
+            expect(screen.queryByText('NEW CHAPTER')).not.toBeInTheDocument();
+            unmount();
+
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'UTC' } });
+            render(<MangaLibrary />);
+            expect(screen.getAllByText('NEW CHAPTER')).toHaveLength(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});

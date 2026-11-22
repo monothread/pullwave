@@ -200,6 +200,7 @@ export interface Settings {
     themeMode: ThemeMode;
     themeFamily: ThemeFamilyId;
     language: LanguageSetting;
+    timeZone: string;
     extraArgs: string;
     animeDownloadDir: string;
     animeQuality: AnimeQuality;

@@ -32,8 +32,8 @@ function entry(overrides: Partial<AnimeUpdateEntry> = {}): AnimeUpdateEntry {
     };
 }
 
-function timeOf(time: number): string {
-    return new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function timeOf(time: number, timeZone?: string): string {
+    return new Date(time).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', ...(timeZone === undefined ? {} : { timeZone }) });
 }
 
 beforeEach(() => {
@@ -107,10 +107,32 @@ describe('AnimeUpdates', () => {
             days.map((day) => {
                 return day.getAttribute('aria-label');
             })
-        ).toEqual(['Today', 'Yesterday', new Date(older).toLocaleDateString()]);
+        ).toEqual(['Today', 'Yesterday', new Date(older).toLocaleDateString('en')]);
         expect(within(days[0] as HTMLElement).getByText('Naruto')).toBeInTheDocument();
         expect(within(days[1] as HTMLElement).getByText('Bleach')).toBeInTheDocument();
         expect(within(days[2] as HTMLElement).getByText('Gintama')).toBeInTheDocument();
+    });
+
+    it('groups days and formats dates and times in the configured time zone', async () => {
+        const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+        vi.setSystemTime(now);
+        const foundAt = Date.UTC(2026, 9, 7, 14, 30, 0);
+        const older = Date.UTC(2026, 9, 3, 20, 0, 0);
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'en', timeZone: 'Asia/Tokyo' } });
+        mock.api.listAnimeUpdates.mockResolvedValue([
+            entry({ id: 1, animeTitle: 'Naruto', episodeNumber: '3', foundAt }),
+            entry({ id: 2, animeTitle: 'Gintama', episodeNumber: '9', foundAt: older })
+        ]);
+        render(<AnimeUpdates />);
+
+        await screen.findAllByTestId('anime-update');
+        const days = screen.getAllByTestId('anime-update-day');
+        expect(
+            days.map((day) => {
+                return day.getAttribute('aria-label');
+            })
+        ).toEqual(['Yesterday', new Date(older).toLocaleDateString('en', { timeZone: 'Asia/Tokyo' })]);
+        expect(within(days[0] as HTMLElement).getByText(`EP 3 · Found at ${timeOf(foundAt, 'Asia/Tokyo')}`)).toBeInTheDocument();
     });
 
     it('keeps the episodes of a day together, in the order they come', async () => {

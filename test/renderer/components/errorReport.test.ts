@@ -121,4 +121,16 @@ describe('errorFields', () => {
         });
         expect(when?.value).toBe(`${new Date(OCCURRED_AT).toLocaleString('ja')} (${ISO})`);
     });
+
+    it('writes the moment in the requested time zone while keeping the ISO UTC suffix', () => {
+        const report = codedErrorReport('x', { code: 'UNKNOWN', details: { occurredAt: OCCURRED_AT } }, 'm');
+        const tokyo = errorFields(report, { ...CONTEXT, timeZone: 'Asia/Tokyo' }).find((field) => {
+            return field.label === 'errorDialog.field.when';
+        });
+        const saoPaulo = errorFields(report, { ...CONTEXT, timeZone: 'America/Sao_Paulo' }).find((field) => {
+            return field.label === 'errorDialog.field.when';
+        });
+        expect(tokyo?.value).toBe(`${new Date(OCCURRED_AT).toLocaleString('en', { timeZone: 'Asia/Tokyo' })} (${ISO})`);
+        expect(saoPaulo?.value).toBe(`${new Date(OCCURRED_AT).toLocaleString('en', { timeZone: 'America/Sao_Paulo' })} (${ISO})`);
+    });
 });

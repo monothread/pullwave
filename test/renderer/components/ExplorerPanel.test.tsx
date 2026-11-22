@@ -215,4 +215,26 @@ describe('ExplorerPanel', () => {
         expect(useAppStore.getState().downloadsView).toBe('tools');
         expect(useAppStore.getState().toolsMode).toBe('cut');
     });
+
+    it('formats folder and file modified dates in the configured time zone', async () => {
+        const boundary = Date.UTC(2026, 9, 3, 23, 30, 0);
+        useAppStore.setState({ settings: { ...initialApp.settings, language: 'en', timeZone: 'Asia/Tokyo' } });
+        mock.api.explorer.list.mockResolvedValue({
+            ok: true,
+            listing: {
+                ...LISTING,
+                entries: [
+                    { ...FOLDER, modifiedAt: boundary },
+                    { ...VIDEO, modifiedAt: boundary }
+                ]
+            }
+        });
+        render(<ExplorerPanel />);
+
+        const folder = await screen.findByTestId('explorer-item-directory');
+        const video = screen.getByTestId('explorer-item-video');
+        const expectedDate = new Date(boundary).toLocaleDateString('en', { timeZone: 'Asia/Tokyo' });
+        expect(within(folder).getByText(expectedDate)).toBeInTheDocument();
+        expect(within(video).getByText(`4.00 KB · ${expectedDate}`)).toBeInTheDocument();
+    });
 });

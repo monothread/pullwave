@@ -1360,5 +1360,14 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
   15. Windows NSIS installer (`electron-builder.yml`): switched to `oneClick: false` with `allowToChangeInstallationDirectory: true`.
 - **Checked:** every defect reproduced against real code before fixing; `tsc --noEmit`, `eslint src/ test/ --max-warnings=0`, full unit test suite, real Electron E2E specs (`layout`, `app`, `anime`, `manga`), and two isolated review agents (security/robustness and performance/consistency/rules).
 
+## D-209 · 2026-11-22 — Global time zone setting across all displayed dates and times
+- **Why:** the time zone picker previously lived only inside Anime → Schedule (`localStorage` via `scheduleChoice.ts`), while every other date, clock, day grouping, greeting, streak, and "New" badge across the app always used the OS local time zone.
+- **What:**
+  - Added `timeZone: string` to `Settings` (`DEFAULT_SETTINGS.timeZone = 'device'`, persisted in `settings.json` and validated by `pickTimeZone` in `settingsSanitizer.ts` accepting `'device'` or valid IANA zones).
+  - Removed the time zone selector from `AnimeSchedule.tsx`, removed `timeZone`/`setScheduleTimeZone` from `animeStore.ts`, removed `scheduleChoice.ts`, and added the Time zone `<SelectField>` to global settings (`SettingsPanel.tsx`, `APPEARANCE & WINDOW`) with localized labels and hints across all 5 languages (`en`, `pt`, `es`, `zh`, `ja`).
+  - Expanded `src/shared/timezone.ts` with `DEVICE_TIME_ZONE`, `resolveTimeZone`, `timeZoneOptions`, single-pass `wallClockOf`, `previousZonedDay`, `zonedDayNumber`, `isSameZonedDay`, `zonedHour`, and `groupByZonedDay`, and fixed `startOfZonedDay` on midnight DST spring-forward transitions (`00:00 -> 01:00` in negative-UTC zones such as `America/Havana` and `America/Santiago`).
+  - Added `useAppTimeZone()` (`src/renderer/hooks/useAppTimeZone.ts`) and cached formatters + `createDayLabeler` (`src/renderer/components/dateFormat.ts`) and applied the resolved time zone (and standardized app `language`) across `TopBarClock`/`clockText`, `StatsCard`/`statsData` (greeting and streak), `HistoryList`, `ExplorerPanel`, `AnimeSchedule`/`animeStore`, `AnimeHistory`, `AnimeUpdates`/`AnimeLibrary`/`animeText`, `MangaDetail`/`MangaHistory`/`MangaUpdates`/`MangaLibrary`/`MangaSeriesView`/`mangaText`, `ErrorDetailsDialog`/`errorReport`, and `LogsDialog`/`logView`.
+- **Checked:** `tsc --noEmit`, `eslint src/ test/ --max-warnings=0`, 27 unit test suites (1,808 tests), Electron E2E (`anime.e2e-spec.ts` schedule/time zone, `app.e2e-spec.ts` global time zone & clock, `settings-layout.e2e-spec.ts`), and an isolated code review pass.
+
 
 

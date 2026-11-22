@@ -15,6 +15,7 @@ import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS } from '@shared/anime';
 import { LLM_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from '@shared/llm';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { sanitizeThemeChoice } from '@shared/themeChoice';
+import { DEVICE_TIME_ZONE, isValidTimeZone } from '@shared/timezone';
 import type { DownloadOptions, Settings } from '@shared/types';
 
 const RATE_LIMIT_PATTERN = /^\d+(\.\d+)?[KkMmGg]?$/;
@@ -58,6 +59,17 @@ function pickRateLimit(value: unknown): string {
     return RATE_LIMIT_PATTERN.test(candidate) ? candidate : '';
 }
 
+function pickTimeZone(value: unknown, fallback: string): string {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+    const trimmed = value.trim();
+    if (trimmed === DEVICE_TIME_ZONE || isValidTimeZone(trimmed)) {
+        return trimmed;
+    }
+    return fallback;
+}
+
 export function sanitizeSettings(input: unknown): Settings {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const defaults = DEFAULT_SETTINGS;
@@ -93,6 +105,7 @@ export function sanitizeSettings(input: unknown): Settings {
         verifyLiveEndSeconds: pickClampedInteger(raw.verifyLiveEndSeconds, MIN_LIVE_END_CHECK_SECONDS, MAX_LIVE_END_CHECK_SECONDS, defaults.verifyLiveEndSeconds),
         ...sanitizeThemeChoice(raw),
         language: pickEnum(raw.language, LANGUAGE_SETTINGS, defaults.language),
+        timeZone: pickTimeZone(raw.timeZone, defaults.timeZone),
         extraArgs: pickString(raw.extraArgs, defaults.extraArgs),
         animeDownloadDir: pickString(raw.animeDownloadDir, defaults.animeDownloadDir),
         animeQuality: pickEnum(raw.animeQuality, ANIME_QUALITIES, defaults.animeQuality),

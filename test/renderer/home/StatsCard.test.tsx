@@ -107,4 +107,25 @@ describe('StatsCard', () => {
             })
         ).toEqual(['Downloads', 'Episodes watched', 'Chapters read', 'Days in a row']);
     });
+
+    it('uses the configured time zone for both the greeting and the streak days', () => {
+        const moment = Date.UTC(2026, 10, 7, 16, 0, 0);
+        vi.setSystemTime(new Date(moment));
+        useAppStore.setState({
+            settings: { ...DEFAULT_SETTINGS, timeZone: 'Asia/Tokyo' },
+            history: [
+                { id: 'a', url: 'u', title: 'A', filePath: null, status: 'done', errorTitle: null, finishedAt: moment },
+                { id: 'b', url: 'u', title: 'B', filePath: null, status: 'done', errorTitle: null, finishedAt: Date.UTC(2026, 10, 7, 14, 0, 0) }
+            ]
+        });
+        render(<StatsCard />);
+        expect(screen.getByTestId('home-stats').querySelector('.stats__greeting')).toHaveTextContent('Still up? The wave never sleeps');
+        expect(numbers().streak).toBe('2');
+
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'UTC' } });
+        });
+        expect(screen.getByTestId('home-stats').querySelector('.stats__greeting')).toHaveTextContent('Good afternoon');
+        expect(numbers().streak).toBe('1');
+    });
 });

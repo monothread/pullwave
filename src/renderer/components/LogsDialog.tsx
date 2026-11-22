@@ -2,6 +2,7 @@ import { memo, useId, useLayoutEffect, useRef, useState, type ReactNode } from '
 import { createPortal } from 'react-dom';
 import type { LogLine, LogSource } from '@shared/logs';
 import type { MessageKey } from '@shared/i18n';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useLogLines } from '../hooks/useLogLines';
 import { useTranslator } from '../i18n/useTranslator';
@@ -35,12 +36,13 @@ function tokenClassName(token: LogToken): string | undefined {
 
 interface LogRowProps {
     line: LogLine;
+    timeZone: string;
 }
 
-const LogRow = memo(function LogRow({ line }: LogRowProps) {
+const LogRow = memo(function LogRow({ line, timeZone }: LogRowProps) {
     return (
         <li className={`log-line log-line--${logLevelOf(line)}`} data-stream={line.stream}>
-            <span className="log-line__time">{formatLogTime(line.at)}</span>
+            <span className="log-line__time">{formatLogTime(line.at, timeZone)}</span>
             <span className="log-line__text">
                 {highlightLog(line.text).map((token, index) => {
                     return (
@@ -63,6 +65,7 @@ interface LogsPaneProps {
 
 function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
     const t = useTranslator();
+    const timeZone = useAppTimeZone();
     const pushToast = useAppStore((state) => {
         return state.pushToast;
     });
@@ -87,7 +90,7 @@ function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
 
     async function copy(): Promise<void> {
         try {
-            await navigator.clipboard.writeText(formatLogText(shown));
+            await navigator.clipboard.writeText(formatLogText(shown, timeZone));
             pushToast(t('logs.copied'));
         } catch {
             pushToast(t('logs.copyFailed'));
@@ -115,7 +118,7 @@ function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
                 ) : (
                     <ol ref={listRef} className="logs__lines" aria-label={t('logs.lines', { program: LOG_SOURCE_LABELS[source] })} tabIndex={0} onScroll={handleScroll}>
                         {shown.map((line) => {
-                            return <LogRow key={line.id} line={line} />;
+                            return <LogRow key={line.id} line={line} timeZone={timeZone} />;
                         })}
                     </ol>
                 )}

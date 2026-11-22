@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeScheduleEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import { machineTimeZone } from '@shared/timezone';
+import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { AnimeSchedule } from '@renderer/components/AnimeSchedule';
 import { INITIAL_SCHEDULE, INITIAL_SEARCH, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
@@ -35,8 +35,8 @@ beforeEach(() => {
     vi.setSystemTime(NOW);
     mock = installMockApi();
     mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [MORNING, NIGHT] });
-    useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, notice: null });
-    useAnimeStore.setState({ ...initialAnime, view: 'schedule', returnView: 'schedule', search: INITIAL_SEARCH, schedule: { ...INITIAL_SCHEDULE, timeZone: 'UTC' } });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, timeZone: 'UTC' }, notice: null });
+    useAnimeStore.setState({ ...initialAnime, view: 'schedule', returnView: 'schedule', search: INITIAL_SEARCH, schedule: INITIAL_SCHEDULE });
 });
 
 afterEach(() => {
@@ -53,12 +53,16 @@ describe('AnimeSchedule', () => {
         expect(mock.api.listAnimeSchedule).toHaveBeenCalledWith({ from: DAY_START, to: DAY_START + 86_400, refresh: false });
     });
 
-    it('starts with the time zone of the machine and the day view', async () => {
+    it('starts on the day view with no time zone selector of its own and uses the machine time zone for device', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'device' } });
         useAnimeStore.setState({ schedule: INITIAL_SCHEDULE });
         render(<AnimeSchedule />);
-        await screen.findByText('Sousou no Frieren');
+        const [from, to] = zonedDayLimits(NOW.getTime(), machineTimeZone(), 1);
+        await vi.waitFor(() => {
+            expect(mock.api.listAnimeSchedule).toHaveBeenCalledWith({ from, to, refresh: false });
+        });
 
-        expect(screen.getByLabelText('Time zone')).toHaveValue(machineTimeZone());
+        expect(screen.queryByLabelText('Time zone')).not.toBeInTheDocument();
         expect(screen.getByLabelText('View')).toHaveValue('day');
     });
 
@@ -108,8 +112,8 @@ describe('AnimeSchedule', () => {
         expect(within(items[0] as HTMLElement).queryByText('COVER NOT FOUND')).not.toBeInTheDocument();
     });
 
-    it('shows the times in the time zone that is set', async () => {
-        useAnimeStore.setState({ schedule: { ...INITIAL_SCHEDULE, timeZone: 'Asia/Tokyo' } });
+    it('shows the times in the time zone from app settings', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'Asia/Tokyo' } });
         render(<AnimeSchedule />);
 
         await screen.findByText('Dandadan');
@@ -119,32 +123,19 @@ describe('AnimeSchedule', () => {
         expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
     });
 
-    it('lists the day again for the time zone that is picked', async () => {
-        const user = userEvent.setup();
+    it('lists the day again when the app time zone setting changes', async () => {
         render(<AnimeSchedule />);
         await screen.findByText('Sousou no Frieren');
         mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [NIGHT] });
 
-        await user.selectOptions(screen.getByLabelText('Time zone'), 'America/Sao_Paulo');
-
-        await vi.waitFor(() => {
-            expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, timeZone: 'America/Sao_Paulo' } });
         });
+
+        await screen.findByText('Dandadan');
+        expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
         expect(mock.api.listAnimeSchedule).toHaveBeenCalledTimes(2);
         expect(mock.api.listAnimeSchedule).toHaveBeenLastCalledWith({ from: DAY_START + 3 * 3600, to: DAY_START + 3 * 3600 + 86_400, refresh: false });
-        expect(useAnimeStore.getState().schedule.timeZone).toBe('America/Sao_Paulo');
-        expect(screen.getByLabelText('Time zone')).toHaveValue('America/Sao_Paulo');
-        expect(screen.getByText('Dandadan')).toBeInTheDocument();
-    });
-
-    it('offers the time zones with their names readable', async () => {
-        render(<AnimeSchedule />);
-        await screen.findByText('Sousou no Frieren');
-
-        const select = screen.getByLabelText('Time zone');
-        expect(within(select).getByRole('option', { name: 'America/Sao Paulo' })).toHaveValue('America/Sao_Paulo');
-        expect(within(select).getByRole('option', { name: 'UTC' })).toHaveValue('UTC');
-        expect(within(select).getByRole('option', { name: 'Asia/Tokyo' })).toHaveValue('Asia/Tokyo');
     });
 
     it('shows the week divided by days, each one with the episodes that air on it', async () => {

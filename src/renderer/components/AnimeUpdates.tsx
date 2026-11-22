@@ -1,21 +1,21 @@
 import { useIncrementalList } from '../hooks/useIncrementalList';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { ListMore } from './ListMore';
 import { useEffect, useState } from 'react';
 import type { AnimeArrivalOrigin, AnimeCheckState, AnimeUpdateEntry } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
-import { useTranslator } from '../i18n/useTranslator';
+import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { animeStatusKey, groupByDay, startOfDay } from './animeText';
+import { animeStatusKey, groupByDay } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { LibraryCard } from '../library/LibraryCard';
 import { ConfirmButton } from './ConfirmButton';
+import { createDayLabeler, formatShortTime } from './dateFormat';
 
 const ORIGIN_KEYS: Record<AnimeArrivalOrigin, MessageKey> = {
     auto: 'anime.recent.origin.auto',
     manual: 'anime.recent.origin.manual'
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function checkButtonLabel(asked: boolean, state: AnimeCheckState, progress: { done: number; total: number }, t: Translator): string {
     if (state.running && state.total > 0) {
@@ -26,6 +26,8 @@ function checkButtonLabel(asked: boolean, state: AnimeCheckState, progress: { do
 
 export function AnimeUpdates() {
     const t = useTranslator();
+    const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const updates = useAnimeStore((state) => {
         return state.updates;
     });
@@ -52,19 +54,18 @@ export function AnimeUpdates() {
         void loadUpdates();
     }, [loadUpdates]);
 
-    const [today] = useState(() => {
-        return startOfDay(Date.now());
+    const [openedAt] = useState(() => {
+        return Date.now();
     });
-    const dayName = (day: number): string => {
-        if (day === today) {
-            return t('anime.recent.today');
-        }
-        return day === today - DAY_MS ? t('anime.recent.yesterday') : new Date(day).toLocaleDateString();
-    };
+    const dayName = createDayLabeler(openedAt, { today: t('anime.recent.today'), yesterday: t('anime.recent.yesterday') }, language, timeZone);
     const { shown: drawn, hasMore, endRef } = useIncrementalList(updates, 'anime-updates');
-    const days = groupByDay<AnimeUpdateEntry>(drawn, (entry) => {
-        return entry.foundAt;
-    });
+    const days = groupByDay<AnimeUpdateEntry>(
+        drawn,
+        (entry) => {
+            return entry.foundAt;
+        },
+        timeZone
+    );
     const busy = checking !== null || checkState.running;
     const progress = { done: checkState.done, total: checkState.total };
 
@@ -108,7 +109,7 @@ export function AnimeUpdates() {
                         <ul className="cover-grid">
                             {group.entries.map((entry) => {
                                 const label = t('anime.episode', { number: entry.episodeNumber });
-                                const time = new Date(entry.foundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const time = formatShortTime(entry.foundAt, language, timeZone);
                                 return (
                                     <LibraryCard
                                         key={entry.id}

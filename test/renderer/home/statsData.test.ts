@@ -27,6 +27,13 @@ describe('dayNumber', () => {
         expect(dayNumber(daysAgo(0, 0))).toBe(dayNumber(daysAgo(0, 23)));
         expect(dayNumber(daysAgo(0, 0)) - dayNumber(daysAgo(1, 23))).toBe(1);
     });
+
+    it('computes calendar days in the requested time zone', () => {
+        const utcLate = Date.UTC(2026, 10, 7, 23, 30, 0);
+        const utcNextEarly = Date.UTC(2026, 10, 8, 1, 30, 0);
+        expect(dayNumber(utcNextEarly, 'UTC') - dayNumber(utcLate, 'UTC')).toBe(1);
+        expect(dayNumber(utcNextEarly, 'America/Sao_Paulo')).toBe(dayNumber(utcLate, 'America/Sao_Paulo'));
+    });
 });
 
 describe('streakDays', () => {
@@ -52,6 +59,18 @@ describe('streakDays', () => {
 
     it('counts a day once however many things happened in it', () => {
         expect(streakDays([daysAgo(0, 1), daysAgo(0, 9), daysAgo(0, 20)], NOW)).toBe(1);
+    });
+
+    it('evaluates consecutive days in the requested time zone', () => {
+        const now = Date.UTC(2026, 10, 8, 1, 0, 0);
+        const first = Date.UTC(2026, 10, 7, 23, 0, 0);
+        const second = Date.UTC(2026, 10, 6, 23, 0, 0);
+        expect(streakDays([first, second], now, 'UTC')).toBe(2);
+        expect(streakDays([first, second], now, 'America/Sao_Paulo')).toBe(2);
+        const tokyoNow = Date.UTC(2026, 10, 7, 16, 0, 0);
+        const tokyoYesterday = Date.UTC(2026, 10, 7, 14, 0, 0);
+        expect(streakDays([tokyoNow, tokyoYesterday], tokyoNow, 'Asia/Tokyo')).toBe(2);
+        expect(streakDays([tokyoNow, tokyoYesterday], tokyoNow, 'UTC')).toBe(1);
     });
 });
 

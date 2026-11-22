@@ -91,8 +91,33 @@ describe('MangaHistory', () => {
         ).toEqual([
             ['Today', 1],
             ['Yesterday', 1],
-            [new Date(at(3, 9)).toLocaleDateString(), 1]
+            [new Date(at(3, 9)).toLocaleDateString('en'), 1]
         ]);
+    });
+
+    it('groups reading history days in the configured time zone', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+            vi.setSystemTime(now);
+            const yesterdayInTokyo = Date.UTC(2026, 9, 7, 14, 30, 0);
+            const older = Date.UTC(2026, 9, 3, 20, 0, 0);
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'en', timeZone: 'Asia/Tokyo' } });
+            mock.api.manga.readingHistory.mockResolvedValue([
+                line({ id: 1, readAt: yesterdayInTokyo }),
+                line({ id: 2, title: 'Naruto', readAt: older })
+            ]);
+            render(<MangaHistory />);
+            await screen.findAllByTestId('manga-history-day');
+            const days = screen.getAllByTestId('manga-history-day');
+            expect(
+                days.map((day) => {
+                    return day.getAttribute('aria-label');
+                })
+            ).toEqual(['Yesterday', new Date(older).toLocaleDateString('en', { timeZone: 'Asia/Tokyo' })]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('opens a manga of the library on its page there', async () => {

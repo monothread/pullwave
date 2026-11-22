@@ -1,12 +1,15 @@
 import { IncrementalItems } from './IncrementalItems';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useExplorerStore } from '../store/explorerStore';
 import { ConfirmButton } from './ConfirmButton';
+import { formatDateTime } from './dateFormat';
 
 export function HistoryList() {
     const t = useTranslator();
     const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const history = useAppStore((state) => {
         return state.history;
     });
@@ -42,7 +45,7 @@ export function HistoryList() {
                                 </span>
                                 <span className="history__meta">
                                     {entry.status === 'done' ? t('history.complete') : t('history.failed', { title: entry.errorTitle ?? t('history.unknownError') })} ·{' '}
-                                    {new Date(entry.finishedAt).toLocaleString(language)}
+                                    {formatDateTime(entry.finishedAt, language, timeZone)}
                                 </span>
                             </div>
                             {entry.filePath && (

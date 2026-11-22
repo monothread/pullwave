@@ -98,7 +98,32 @@ describe('MangaUpdates', () => {
         expect(within(days[0]!).getAllByTestId('manga-update')).toHaveLength(2);
         expect(days[1]).toHaveAccessibleName('Yesterday');
         expect(within(days[1]!).getAllByTestId('manga-update')).toHaveLength(1);
-        expect(days[2]).toHaveAccessibleName(new Date(at(5, 8)).toLocaleDateString());
+        expect(days[2]).toHaveAccessibleName(new Date(at(5, 8)).toLocaleDateString('en'));
+    });
+
+    it('groups days and formats dates and times in the configured time zone', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+            vi.setSystemTime(now);
+            const foundAt = Date.UTC(2026, 9, 7, 14, 30, 0);
+            const older = Date.UTC(2026, 9, 3, 20, 0, 0);
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'en', timeZone: 'Asia/Tokyo' } });
+            mock.api.manga.updates.mockResolvedValue([
+                entry({ id: 1, foundAt }),
+                entry({ id: 2, foundAt: older, chapterName: 'Old Chapter' })
+            ]);
+            render(<MangaUpdates />);
+
+            await screen.findAllByTestId('manga-update');
+            const days = screen.getAllByTestId('manga-update-day');
+            expect(days[0]).toHaveAccessibleName('Yesterday');
+            expect(days[1]).toHaveAccessibleName(new Date(older).toLocaleDateString('en', { timeZone: 'Asia/Tokyo' }));
+            const tokyoTime = new Date(foundAt).toLocaleTimeString('en', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' });
+            expect(within(days[0]!).getByText(`The Great Race · Found at ${tokyoTime}`)).toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('opens the manga in the library when a chapter is clicked', async () => {

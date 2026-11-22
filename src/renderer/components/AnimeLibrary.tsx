@@ -24,6 +24,7 @@ import { animeListKey, inListOrder, useAnimeLibrarySort, useListOrder } from '..
 import { ListOrderSelect } from './ListOrderSelect';
 import { WatchedMark } from './WatchedMark';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useSeriesCoverTitle } from '../hooks/useSeriesCoverTitle';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 import { NotFound } from './NotFound';
@@ -56,6 +57,7 @@ function episodeMeta(episode: AnimeEpisodeRecord, t: Translator): string {
 }
 
 function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
+    const timeZone = useAppTimeZone();
     const play = useAnimeStore((state) => {
         return state.play;
     });
@@ -98,7 +100,7 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                     ) : (
                         label
                     )}
-                    {isNewEpisode(episode) && (
+                    {isNewEpisode(episode, undefined, timeZone) && (
                         <span className="badge badge--new" data-testid="anime-episode-new">
                             {t('anime.episode.new')}
                         </span>
@@ -318,11 +320,12 @@ function seasonProgress(anime: LibraryAnime, t: Translator): string {
 }
 
 function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; onOpen: () => void }) {
+    const timeZone = useAppTimeZone();
     const focused = useAnimeStore((state) => {
         return state.libraryFocus === anime.id;
     });
     const card = useRef<HTMLElement | null>(null);
-    const newCount = newEpisodeCount(anime);
+    const newCount = newEpisodeCount(anime, undefined, timeZone);
 
     useEffect(() => {
         if (focused) {
@@ -527,9 +530,9 @@ function hasMissingEpisodes(group: LibraryGroup): boolean {
     return group.entries.some(hasMissingInAnime);
 }
 
-function newEpisodesOf(group: LibraryGroup): number {
+function newEpisodesOf(group: LibraryGroup, timeZone: string): number {
     return group.entries.reduce((total, anime) => {
-        return total + newEpisodeCount(anime);
+        return total + newEpisodeCount(anime, undefined, timeZone);
     }, 0);
 }
 
@@ -540,10 +543,12 @@ function seasonTitles(group: LibraryGroup): string[] {
 }
 
 function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; onOpen: () => void }) {
+    const timeZone = useAppTimeZone();
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
     });
     const name = group.series;
+    const newCount = newEpisodesOf(group, timeZone);
 
     return (
         <LibraryCard
@@ -558,7 +563,7 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
             badges={
                 <>
                     <span className="badge">{seasonsText(group, t)}</span>
-                    {newEpisodesOf(group) > 0 && <NewEpisodesBadge count={newEpisodesOf(group)} t={t} />}
+                    {newCount > 0 && <NewEpisodesBadge count={newCount} t={t} />}
                 </>
             }
             actions={

@@ -1,9 +1,11 @@
 import { findCover, flyCoverToLibrary } from '../fx/flyCover';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { inListOrder, mangaListKey, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
 import { IncrementalItems } from './IncrementalItems';
-import { useTranslator } from '../i18n/useTranslator';
+import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
+import { formatDate } from './dateFormat';
 import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
 import { hasChapterFile } from '@shared/manga';
@@ -56,12 +58,14 @@ function TermButton({ term, label, kind, searchable, onSearch }: TermButtonProps
     );
 }
 
-function formatDate(milliseconds: number | null): string {
-    return milliseconds === null ? '' : new Date(milliseconds).toLocaleDateString();
+function formatChapterDate(milliseconds: number | null, language: string, timeZone: string): string {
+    return milliseconds === null ? '' : formatDate(milliseconds, language, timeZone);
 }
 
 export function MangaDetail() {
     const t = useTranslator();
+    const language = useAppLanguage();
+    const timeZone = useAppTimeZone();
     const selection = useMangaStore((state) => {
         return state.selection;
     });
@@ -538,11 +542,11 @@ export function MangaDetail() {
                                             </RowLink>
                                         </span>
                                         <span className="history__meta">
-                                            {[chapter.scanlator, formatDate(chapter.dateUploaded), pageLeftOn > 0 && !read ? t('manga.detail.leftOn', { page: pageLeftOn + 1 }) : null].filter(Boolean).join(' · ')}
+                                            {[chapter.scanlator, formatChapterDate(chapter.dateUploaded, language, timeZone), pageLeftOn > 0 && !read ? t('manga.detail.leftOn', { page: pageLeftOn + 1 }) : null].filter(Boolean).join(' · ')}
                                         </span>
                                     </div>
                                     <span className="anime__actions">
-                                        {state && isNewChapter(state) && <span className="badge badge--new">{t('manga.detail.new')}</span>}
+                                        {state && isNewChapter(state, undefined, timeZone) && <span className="badge badge--new">{t('manga.detail.new')}</span>}
                                         {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
                                         {inLibraryPage && (
                                             <button

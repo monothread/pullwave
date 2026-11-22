@@ -10,13 +10,14 @@ import {
     THEME_MODES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, type AnimeQuality, type AnimeSubtitleSetting } from '@shared/anime';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@shared/browserChoice';
 import { LANGUAGE_NAMES, type Translator } from '@shared/i18n/core';
 import { translationSetupGap } from '@shared/llm';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
+import { DEVICE_TIME_ZONE, timeZoneOptions } from '@shared/timezone';
 import type { DetectedBrowser, LanguageSetting, SiteBrowser, ThemeFamilyId, ThemeMode } from '@shared/types';
 import { useAutoSaveSettings, type SaveStatus } from '../hooks/useAutoSaveSettings';
 import { useTranslator } from '../i18n/useTranslator';
@@ -79,6 +80,13 @@ function formatThemeMode(mode: ThemeMode, t: Translator): string {
 
 function formatLanguage(language: LanguageSetting, t: Translator): string {
     return language === 'device' ? t('language.device') : LANGUAGE_NAMES[language];
+}
+
+function formatTimeZone(timeZone: string, t: Translator): string {
+    if (timeZone === DEVICE_TIME_ZONE) {
+        return t('timeZone.device');
+    }
+    return timeZone.replaceAll('_', ' ');
 }
 
 function formatAnimeQuality(quality: AnimeQuality, t: Translator): string {
@@ -230,6 +238,9 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const browserOptions = chosenBrowser ? detectedDirs : [NO_BROWSER_CHOSEN, ...detectedDirs];
     const unboundedAutoSubtitles = hasUnboundedAutoSubtitles(draft);
     const trayWarning = draft.closeToTray && traySupport !== null && !traySupport.available ? traySupport.reason : null;
+    const timeZones = useMemo(() => {
+        return timeZoneOptions(draft.timeZone);
+    }, [draft.timeZone]);
 
     useEffect(() => {
         if (previousAutoTranslate.current && !storedAutoTranslate) {
@@ -336,6 +347,18 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             hint={t('settings.language.hint')}
                             onChange={(value) => {
                                 change('language', value);
+                            }}
+                        />
+                        <SelectField
+                            label={t('settings.timeZone')}
+                            value={draft.timeZone}
+                            options={timeZones}
+                            formatOption={(zone) => {
+                                return formatTimeZone(zone, t);
+                            }}
+                            hint={t('settings.timeZone.hint')}
+                            onChange={(value) => {
+                                change('timeZone', value);
                             }}
                         />
                         <SoundVolumeField />

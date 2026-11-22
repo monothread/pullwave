@@ -288,7 +288,7 @@ test.describe('the schedule', () => {
         await expect(items.locator('img').first()).toHaveAttribute('src', COVER);
         await expect(page.getByRole('heading').filter({ hasText: / · TODAY$/ })).toHaveCount(1);
         await expect(page.getByLabel('View')).toHaveValue('day');
-        await expect(page.getByLabel('Time zone')).toHaveValue(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        await expect(page.getByLabel('Time zone')).toHaveCount(0);
         await expect(page.getByRole('button', { name: /^DOWNLOAD:/ })).toHaveCount(0);
 
         expect(asked).toHaveLength(1);
@@ -394,14 +394,19 @@ test.describe('the schedule', () => {
         expect(asked).toHaveLength(before);
     });
 
-    test('counts the days in the time zone that is picked', async () => {
+    test('counts the days in the time zone that is picked in general settings', async () => {
         const page = await openSchedule(ITEMS);
         await expect(page.getByText('AIRING [2]')).toBeVisible();
+        await expect(page.getByLabel('Time zone')).toHaveCount(0);
         const before = asked.length;
 
+        await page.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true }).click();
+        await expect(page.getByLabel('Time zone')).toHaveValue('device');
         await page.getByLabel('Time zone').selectOption('Asia/Tokyo');
-
         await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Tokyo');
+        await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
+
+        await page.getByRole('button', { name: 'ANIME', exact: true }).click();
         await expect.poll(() => {
             return asked.length;
         }).toBe(before + 1);

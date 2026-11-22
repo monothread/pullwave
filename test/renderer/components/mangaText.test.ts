@@ -1131,3 +1131,42 @@ describe('resolveMangaLanguage', () => {
         expect(resolveMangaLanguage('pt', [], 'en-US')).toBe(ALL_LANGUAGES);
     });
 });
+
+describe('mangaText time zone helpers', () => {
+    it('groups entries by day in the requested time zone', () => {
+        const earlyNextUtc = Date.UTC(2026, 9, 4, 1, 30, 0);
+        const lateUtc = Date.UTC(2026, 9, 3, 22, 30, 0);
+        const items = [{ at: earlyNextUtc }, { at: lateUtc }];
+
+        expect(
+            groupByDay(
+                items,
+                (item) => {
+                    return item.at;
+                },
+                'UTC'
+            )
+        ).toHaveLength(2);
+        expect(
+            groupByDay(
+                items,
+                (item) => {
+                    return item.at;
+                },
+                'America/Sao_Paulo'
+            )
+        ).toEqual([{ day: Date.UTC(2026, 9, 3, 3, 0, 0), entries: items }]);
+    });
+
+    it('checks isNewChapter and newChapterCount in the requested time zone', () => {
+        const now = Date.UTC(2026, 9, 7, 16, 0, 0);
+        const arrived = Date.UTC(2026, 9, 7, 14, 30, 0);
+        const chapter = makeChapterRecord({ id: 1, dateUploaded: arrived, addedAt: arrived });
+        const manga = makeLibraryManga([chapter, makeChapterRecord({ id: 2, dateUploaded: null, addedAt: null })]);
+
+        expect(isNewChapter(chapter, now, 'UTC')).toBe(true);
+        expect(isNewChapter(chapter, now, 'Asia/Tokyo')).toBe(false);
+        expect(newChapterCount([manga], now, 'UTC')).toBe(1);
+        expect(newChapterCount([manga], now, 'Asia/Tokyo')).toBe(0);
+    });
+});

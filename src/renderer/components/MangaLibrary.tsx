@@ -16,6 +16,7 @@ import { MangaLibrarySpotlight } from '../library/LibrarySpotlights';
 import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
 import { useMangaLibrarySort } from '../store/sortPrefsStore';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
+import { useAppTimeZone } from '../hooks/useAppTimeZone';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 import { NotFound } from './NotFound';
 
@@ -108,6 +109,7 @@ function useSourceLabels(mangas: readonly LibraryManga[]): string[] {
 
 function MangaRow({ manga }: MangaRowProps) {
     const t = useTranslator();
+    const timeZone = useAppTimeZone();
     const sourceMissing = useSourceMissing([manga]);
     const sourceLabels = useSourceLabels([manga]);
     const removeManga = useMangaStore((state) => {
@@ -125,7 +127,7 @@ function MangaRow({ manga }: MangaRowProps) {
             thumbnailUrl={manga.thumbnailUrl}
             done={downloadedCount(manga)}
             total={manga.chapters.length}
-            newChapters={newChapterCount([manga])}
+            newChapters={newChapterCount([manga], undefined, timeZone)}
             sourceMissing={sourceMissing}
             sourceLabels={sourceLabels}
             onOpen={() => {
@@ -153,6 +155,7 @@ interface SeriesRowProps {
 
 function SeriesRow({ group, onOpen }: SeriesRowProps) {
     const t = useTranslator();
+    const timeZone = useAppTimeZone();
     const totals = downloadedTotals(group.entries);
     const sourceMissing = useSourceMissing(group.entries);
     const sourceLabels = useSourceLabels(group.entries);
@@ -164,7 +167,7 @@ function SeriesRow({ group, onOpen }: SeriesRowProps) {
             thumbnailUrl={group.entries[0]?.thumbnailUrl ?? null}
             done={totals.done}
             total={totals.total}
-            newChapters={newChapterCount(group.entries)}
+            newChapters={newChapterCount(group.entries, undefined, timeZone)}
             seasons={group.entries.length}
             sourceMissing={sourceMissing}
             sourceLabels={sourceLabels}
