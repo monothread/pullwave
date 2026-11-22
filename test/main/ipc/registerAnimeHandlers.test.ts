@@ -1380,7 +1380,7 @@ describe('registerAnimeHandlers', () => {
             expect(db.getEpisode(episode.id)).toBeNull();
             expect(removeFiles).toHaveBeenCalledWith([
                 '/lib/Naruto/Naruto Episode 1.mp4',
-                join('/lib/Naruto', 'Naruto Episode 1.vtt'),
+                '/lib/Naruto/Naruto Episode 1.vtt',
                 join('/lib/Naruto', 'pullwave.json')
             ]);
             expect(removeFolders).not.toHaveBeenCalled();
@@ -1427,7 +1427,7 @@ describe('registerAnimeHandlers', () => {
 
             expect(removeFiles).toHaveBeenCalledWith([
                 '/lib/Naruto/Episode 1/Naruto Episode 1.mp4',
-                join('/lib/Naruto/Episode 1', 'Naruto Episode 1.vtt'),
+                '/lib/Naruto/Episode 1/Naruto Episode 1.vtt',
                 join('/lib/Naruto/Episode 1', 'pullwave.json')
             ]);
             expect(removeEmptyFolders).toHaveBeenCalledTimes(1);
