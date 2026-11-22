@@ -93,6 +93,15 @@ describe('HomePanel', () => {
         expect(within(highlights).queryByRole('button', { name: /^Highlight/ })).not.toBeInTheDocument();
     });
 
+    it('leaves out of the highlights a manga removed from the library even when history still holds its old libraryMangaId', () => {
+        fill();
+        useMangaStore.setState({ library: [] });
+        render(<HomePanel />);
+        const highlights = screen.getByRole('region', { name: 'Highlights' });
+        expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Watching');
+        expect(within(highlights).queryByRole('button', { name: /^Highlight/ })).not.toBeInTheDocument();
+    });
+
     it('leaves out the highlights of a section that does not exist here', () => {
         fill();
         useAnimeStore.setState({ status: makeStatus({ supported: false }) });

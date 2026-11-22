@@ -97,4 +97,13 @@ describe('MangaLibrarySpotlight', () => {
         const { container } = render(<MangaLibrarySpotlight />);
         expect(container).toBeEmptyDOMElement();
     });
+
+    it('draws nothing when reading history still carries a stale libraryMangaId for a manga removed from the library', () => {
+        useMangaStore.setState({
+            library: [],
+            history: [makeReading({ id: 5, title: 'Removed Manga', libraryMangaId: 7, page: 2, pageCount: 20 })]
+        });
+        const { container } = render(<MangaLibrarySpotlight />);
+        expect(container).toBeEmptyDOMElement();
+    });
 });

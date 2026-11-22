@@ -90,11 +90,15 @@ export function animeSpotlight(library: readonly LibraryAnime[], history: readon
 
 export function mangaSpotlight(library: readonly LibraryManga[], history: readonly ReadingEntry[], readKeys: readonly string[], now: number, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
     const groups = groupManga(library);
+    const libraryIds = new Set<number>();
+    library.forEach((manga) => {
+        libraryIds.add(manga.id);
+    });
     const items: SpotlightItem[] = [];
     const used = new Set<number>();
     continueReading(
         history.filter((entry) => {
-            return entry.libraryMangaId !== null;
+            return entry.libraryMangaId !== null && libraryIds.has(entry.libraryMangaId);
         }),
         library,
         readKeys

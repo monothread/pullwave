@@ -1311,7 +1311,23 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 const stillThere = state.libraryGroup === null || groups.some((group) => {
                     return group.id === state.libraryGroup;
                 });
-                return { library, groups, libraryGroup: stillThere ? state.libraryGroup : null };
+                if (state.history.length === 0) {
+                    return { library, groups, libraryGroup: stillThere ? state.libraryGroup : null };
+                }
+                const libraryIdByKey = new Map<string, number>();
+                library.forEach((manga) => {
+                    libraryIdByKey.set(mangaListKey(manga.sourceId, manga.remoteId), manga.id);
+                });
+                let historyChanged = false;
+                const history = state.history.map((entry) => {
+                    const nextId = libraryIdByKey.get(mangaListKey(entry.sourceId, entry.mangaRemoteId)) ?? null;
+                    if (entry.libraryMangaId === nextId) {
+                        return entry;
+                    }
+                    historyChanged = true;
+                    return { ...entry, libraryMangaId: nextId };
+                });
+                return { library, groups, libraryGroup: stillThere ? state.libraryGroup : null, history: historyChanged ? history : state.history };
             });
         },
 

@@ -1662,17 +1662,47 @@ describe('jobs and library actions', () => {
         expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, status: 'running' })]);
     });
 
-    it('removes an episode and drops its job', async () => {
-        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1 }), makeAnimeJob({ episodeId: 2 })] });
+    it('removes an episode and drops its library episode and job', async () => {
+        const ep1 = makeEpisode({ id: 1, animeId: 10, number: '1' });
+        const ep2 = makeEpisode({ id: 2, animeId: 10, number: '2' });
+        const ep3 = makeEpisode({ id: 3, animeId: 20, number: '1' });
+        useAnimeStore.setState({
+            library: [
+                makeAnime([ep1, ep2], { id: 10, title: 'Naruto' }),
+                makeAnime([ep3], { id: 20, title: 'Bleach' })
+            ],
+            jobs: [makeAnimeJob({ episodeId: 1, animeId: 10 }), makeAnimeJob({ episodeId: 2, animeId: 10 })]
+        });
         await useAnimeStore.getState().removeEpisode(1);
         expect(mock.api.removeAnimeEpisode).toHaveBeenCalledWith(1);
-        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2 })]);
+        expect(
+            useAnimeStore.getState().library.map((anime) => {
+                return {
+                    id: anime.id,
+                    episodeIds: anime.episodes.map((episode) => {
+                        return episode.id;
+                    })
+                };
+            })
+        ).toEqual([
+            { id: 10, episodeIds: [2] },
+            { id: 20, episodeIds: [3] }
+        ]);
+        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, animeId: 10 })]);
     });
 
-    it('removes an anime and drops the jobs of its episodes', async () => {
-        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, animeId: 1 }), makeAnimeJob({ episodeId: 2, animeId: 2 })] });
+    it('removes an anime and drops its library entry and the jobs of its episodes', async () => {
+        useAnimeStore.setState({
+            library: [makeAnime([], { id: 1, title: 'Naruto' }), makeAnime([], { id: 2, title: 'Bleach' })],
+            jobs: [makeAnimeJob({ episodeId: 1, animeId: 1 }), makeAnimeJob({ episodeId: 2, animeId: 2 })]
+        });
         await useAnimeStore.getState().removeAnime(1);
         expect(mock.api.removeAnime).toHaveBeenCalledWith(1);
+        expect(
+            useAnimeStore.getState().library.map((anime) => {
+                return anime.id;
+            })
+        ).toEqual([2]);
         expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, animeId: 2 })]);
     });
 

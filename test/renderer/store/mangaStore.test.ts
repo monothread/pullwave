@@ -961,6 +961,29 @@ describe('mangaStore library and jobs', () => {
         expect(state().library).toEqual(library);
     });
 
+    it('reconciles libraryMangaId in loaded reading history when refreshing the library after removal or re-addition', async () => {
+        const kept = makeLibraryManga([], { id: 5, sourceId: '123', remoteId: 8, title: 'Kept' });
+        const readded = makeLibraryManga([], { id: 12, sourceId: '123', remoteId: 9, title: 'Readded' });
+        useMangaStore.setState({
+            history: [
+                { id: 1, sourceId: '123', mangaRemoteId: 7, title: 'Removed', thumbnailUrl: null, chapterRemoteId: 10, chapterName: 'Ch 1', chapterNumber: 1, page: 2, pageCount: 20, readAt: 100, libraryMangaId: 4 },
+                { id: 2, sourceId: '123', mangaRemoteId: 8, title: 'Kept', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Ch 1', chapterNumber: 1, page: 2, pageCount: 20, readAt: 200, libraryMangaId: 5 },
+                { id: 3, sourceId: '123', mangaRemoteId: 9, title: 'Readded', thumbnailUrl: null, chapterRemoteId: 12, chapterName: 'Ch 1', chapterNumber: 1, page: 2, pageCount: 20, readAt: 300, libraryMangaId: null }
+            ]
+        });
+        mock.api.manga.library.mockResolvedValue([kept, readded]);
+        await state().refreshLibrary();
+        expect(
+            state().history.map((entry) => {
+                return [entry.id, entry.libraryMangaId];
+            })
+        ).toEqual([
+            [1, null],
+            [2, 5],
+            [3, 12]
+        ]);
+    });
+
     it('downloads what is missing, opens the folder and removes a manga or a chapter, reading the library after', async () => {
         await state().downloadMissing(4);
         expect(mock.api.manga.downloadMissing).toHaveBeenCalledWith([4]);

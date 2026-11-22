@@ -940,6 +940,21 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             await window.api.removeAnimeEpisode(episodeId);
             set((state) => {
                 return {
+                    library: state.library.map((anime) => {
+                        if (
+                            !anime.episodes.some((episode) => {
+                                return episode.id === episodeId;
+                            })
+                        ) {
+                            return anime;
+                        }
+                        return {
+                            ...anime,
+                            episodes: anime.episodes.filter((episode) => {
+                                return episode.id !== episodeId;
+                            })
+                        };
+                    }),
                     jobs: state.jobs.filter((job) => {
                         return job.episodeId !== episodeId;
                     })
@@ -957,6 +972,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             }
             set((state) => {
                 return {
+                    library: state.library.filter((anime) => {
+                        return anime.id !== animeId;
+                    }),
                     jobs: state.jobs.filter((job) => {
                         return job.animeId !== animeId;
                     })

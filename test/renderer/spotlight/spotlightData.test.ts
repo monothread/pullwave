@@ -86,6 +86,10 @@ describe('animeSpotlight', () => {
     it('is empty with nothing to go on with and nothing new', () => {
         expect(animeSpotlight([quiet], [], NOW)).toEqual([]);
     });
+
+    it('leaves out an anime from history that is no longer in the library', () => {
+        expect(animeSpotlight([quiet], [makeAnimeHistory({ title: 'Removed Anime', episode: '1' })], NOW)).toEqual([]);
+    });
 });
 
 describe('mangaSpotlight', () => {
@@ -131,6 +135,15 @@ describe('mangaSpotlight', () => {
         expect(mangaSpotlight([manga], [marked], ['Reading|11', 'Reading|12'], NOW)).toEqual([
             { key: 'manga-news-manga-1', kind: 'manga', reason: 'news', title: 'Reading', coverUrl: 'https://img/r.jpg', group, count: 1 }
         ]);
+    });
+
+    it('leaves out a reading history entry whose libraryMangaId is no longer in the library', () => {
+        const removed = makeReading({ id: 11, title: 'Removed Manga', libraryMangaId: 99, page: 2, pageCount: 20, thumbnailUrl: 'https://img/gone.jpg' });
+        const kept = makeReading({ id: 12, title: 'Reading', libraryMangaId: 1, page: 9, pageCount: 20, thumbnailUrl: 'https://img/r.jpg' });
+        expect(mangaSpotlight([reading], [removed, kept], [], NOW)).toEqual([
+            { key: 'manga-continue-12', kind: 'manga', reason: 'continue', title: 'Reading', coverUrl: 'https://img/r.jpg', entry: kept, progress: 0.5 }
+        ]);
+        expect(mangaSpotlight([], [removed], [], NOW)).toEqual([]);
     });
 });
 
