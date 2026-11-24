@@ -31,12 +31,14 @@ export interface ExplorerPrefs {
     sortBy: ExplorerSortBy;
     sortDirection: ExplorerSortDirection;
     viewMode: ExplorerViewMode;
+    showHidden: boolean;
 }
 
 export const DEFAULT_EXPLORER_PREFS: ExplorerPrefs = {
     sortBy: 'name',
     sortDirection: 'asc',
-    viewMode: 'grid'
+    viewMode: 'grid',
+    showHidden: false
 };
 
 function pickOption<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
@@ -58,7 +60,8 @@ export function readExplorerPrefs(): ExplorerPrefs {
         return {
             sortBy: pickOption(record['sortBy'], SORT_BY_OPTIONS, DEFAULT_EXPLORER_PREFS.sortBy),
             sortDirection: pickOption(record['sortDirection'], SORT_DIRECTIONS, DEFAULT_EXPLORER_PREFS.sortDirection),
-            viewMode: pickOption(record['viewMode'], VIEW_MODES, DEFAULT_EXPLORER_PREFS.viewMode)
+            viewMode: pickOption(record['viewMode'], VIEW_MODES, DEFAULT_EXPLORER_PREFS.viewMode),
+            showHidden: typeof record['showHidden'] === 'boolean' ? record['showHidden'] : DEFAULT_EXPLORER_PREFS.showHidden
         };
     } catch {
         return DEFAULT_EXPLORER_PREFS;
@@ -126,6 +129,7 @@ export interface ExplorerState {
     sortBy: ExplorerSortBy;
     sortDirection: ExplorerSortDirection;
     viewMode: ExplorerViewMode;
+    showHidden: boolean;
     highlightedPath: string | null;
     playing: ExplorerPlayerState | null;
     open: (directory?: string) => Promise<void>;
@@ -136,6 +140,7 @@ export interface ExplorerState {
     goUp: () => Promise<void>;
     revealFile: (filePath: string) => Promise<void>;
     clearHighlight: () => void;
+    setShowHidden: (showHidden: boolean) => Promise<void>;
     setFilter: (filter: ExplorerFilter) => void;
     setQuery: (query: string) => void;
     setSortBy: (sortBy: ExplorerSortBy) => void;
@@ -173,9 +178,12 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             }
         }
         try {
-            let response = await window.api.explorer.list(target);
+            const showHidden = get().showHidden;
+            let response = await window.api.explorer.list(target, showHidden);
+            let fellBackToRoot = false;
             if (!response.ok && response.reason === 'denied' && target !== undefined) {
-                response = await window.api.explorer.list(undefined);
+                response = await window.api.explorer.list(undefined, showHidden);
+                fellBackToRoot = true;
             }
             if (seq !== requestSeq) {
                 return;
@@ -190,7 +198,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             const state = get();
             let nextHistory = state.history;
             let nextIndex = state.historyIndex;
-            if (historyUpdate === 'push') {
+            if (fellBackToRoot) {
+                nextHistory = [listing.directory];
+                nextIndex = 0;
+            } else if (historyUpdate === 'push') {
                 if (state.history[state.historyIndex] !== listing.directory) {
                     nextHistory = [...state.history.slice(0, state.historyIndex + 1), listing.directory];
                     nextIndex = nextHistory.length - 1;
@@ -304,25 +315,56 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             }
             requestSeq += 1;
             const seq = requestSeq;
+            const targetName = fileBaseNameOf(trimmed).toLowerCase();
+            const findMatched = (entries: readonly ExplorerEntry[]): ExplorerEntry | undefined => {
+                return entries.find((entry) => {
+                    return entry.kind !== 'directory' && (entry.path === trimmed || entry.name.toLowerCase() === targetName);
+                });
+            };
             try {
-                const response = await window.api.explorer.list(parentDir);
+                const currentShowHidden = get().showHidden;
+                let effectiveShowHidden = currentShowHidden;
+                let response = await window.api.explorer.list(parentDir, currentShowHidden);
                 if (seq !== requestSeq) {
                     return;
+                }
+                let matched = response.ok ? findMatched(response.listing.entries) : undefined;
+                if (!currentShowHidden && (matched === undefined && (response.ok || response.reason === 'denied'))) {
+                    const retry = await window.api.explorer.list(parentDir, true);
+                    if (seq !== requestSeq) {
+                        return;
+                    }
+                    if (retry.ok) {
+                        const retryMatched = findMatched(retry.listing.entries);
+                        if (retryMatched !== undefined) {
+                            response = retry;
+                            matched = retryMatched;
+                            effectiveShowHidden = true;
+                        } else if (!response.ok) {
+                            response = retry;
+                        }
+                    } else {
+                        response = retry;
+                    }
                 }
                 if (!response.ok) {
                     notifyRevealFailure(response.reason === 'denied' ? 'explorer.reveal.outside-downloads' : 'explorer.reveal.not-found');
                     return;
                 }
                 const { listing } = response;
-                const targetName = fileBaseNameOf(trimmed).toLowerCase();
-                const matched = listing.entries.find((entry) => {
-                    return entry.kind !== 'directory' && (entry.path === trimmed || entry.name.toLowerCase() === targetName);
-                });
                 if (matched === undefined) {
                     notifyRevealFailure('explorer.reveal.not-found');
                     return;
                 }
                 const state = get();
+                if (effectiveShowHidden !== state.showHidden) {
+                    writeExplorerPrefs({
+                        sortBy: state.sortBy,
+                        sortDirection: state.sortDirection,
+                        viewMode: state.viewMode,
+                        showHidden: effectiveShowHidden
+                    });
+                }
                 let nextHistory = state.history;
                 let nextIndex = state.historyIndex;
                 if (state.history[state.historyIndex] !== listing.directory) {
@@ -340,6 +382,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
                     error: null,
                     history: nextHistory,
                     historyIndex: nextIndex,
+                    showHidden: effectiveShowHidden,
                     filter: 'all',
                     query: '',
                     highlightedPath: matched.path
@@ -358,6 +401,17 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             }
         },
 
+        setShowHidden: async (showHidden) => {
+            const { sortBy, sortDirection, viewMode, directory, loaded, loading } = get();
+            writeExplorerPrefs({ sortBy, sortDirection, viewMode, showHidden });
+            set({ showHidden });
+            if (directory.length > 0) {
+                await loadDirectory(directory, 'none');
+            } else if (loaded || loading) {
+                await loadDirectory(undefined, 'push');
+            }
+        },
+
         setFilter: (filter) => {
             set({ filter });
         },
@@ -367,21 +421,21 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
         },
 
         setSortBy: (sortBy) => {
-            const { sortDirection, viewMode } = get();
-            writeExplorerPrefs({ sortBy, sortDirection, viewMode });
+            const { sortDirection, viewMode, showHidden } = get();
+            writeExplorerPrefs({ sortBy, sortDirection, viewMode, showHidden });
             set({ sortBy });
         },
 
         toggleSortDirection: () => {
-            const { sortBy, sortDirection, viewMode } = get();
+            const { sortBy, sortDirection, viewMode, showHidden } = get();
             const nextDirection: ExplorerSortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-            writeExplorerPrefs({ sortBy, sortDirection: nextDirection, viewMode });
+            writeExplorerPrefs({ sortBy, sortDirection: nextDirection, viewMode, showHidden });
             set({ sortDirection: nextDirection });
         },
 
         setViewMode: (viewMode) => {
-            const { sortBy, sortDirection } = get();
-            writeExplorerPrefs({ sortBy, sortDirection, viewMode });
+            const { sortBy, sortDirection, showHidden } = get();
+            writeExplorerPrefs({ sortBy, sortDirection, viewMode, showHidden });
             set({ viewMode });
         },
 

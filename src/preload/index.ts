@@ -339,8 +339,8 @@ const merge: CyberApi['merge'] = {
 };
 
 const explorer: CyberApi['explorer'] = {
-    list: (directory) => {
-        return ipcRenderer.invoke(IPC.explorerList, directory);
+    list: (directory, showHidden) => {
+        return ipcRenderer.invoke(IPC.explorerList, directory, showHidden);
     },
     openFolder: (directory) => {
         return ipcRenderer.invoke(IPC.explorerOpenFolder, directory);

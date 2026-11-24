@@ -61,7 +61,7 @@ export type ExplorerPreviewFailure = 'not-found' | 'no-ffmpeg' | 'failed' | 'can
 export type ExplorerPreviewResponse = { ok: true; url: string; converted: boolean } | { ok: false; reason: ExplorerPreviewFailure };
 
 export interface ExplorerApi {
-    list: (directory?: string) => Promise<ExplorerListResponse>;
+    list: (directory?: string, showHidden?: boolean) => Promise<ExplorerListResponse>;
     openFolder: (directory: string) => Promise<ExplorerOpenFolderResponse>;
     createFolder: (parentDir: string, name: string) => Promise<ExplorerCreateFolderResponse>;
     rename: (path: string, newName: string) => Promise<ExplorerRenameResponse>;

@@ -80,8 +80,31 @@ describe('explorerStore', () => {
         expect(useExplorerStore.getState().directory).toBe('/downloads/Clips');
         expect(useExplorerStore.getState().historyIndex).toBe(1);
 
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads/Clips', []) });
+        await useExplorerStore.getState().setShowHidden(true);
+        expect(useExplorerStore.getState().showHidden).toBe(true);
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads/Clips', true);
+        expect(readExplorerPrefs().showHidden).toBe(true);
+
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads/.hidden-dir', []) });
+        await useExplorerStore.getState().open('/downloads/.hidden-dir');
+        expect(useExplorerStore.getState().directory).toBe('/downloads/.hidden-dir');
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads/.hidden-dir', true);
+
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: false, reason: 'denied' });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR, VIDEO_1, AUDIO_1]) });
+        await useExplorerStore.getState().setShowHidden(false);
+        expect(useExplorerStore.getState().showHidden).toBe(false);
+        expect(useExplorerStore.getState().directory).toBe('/downloads');
+        expect(useExplorerStore.getState().history).toEqual(['/downloads']);
+        expect(useExplorerStore.getState().historyIndex).toBe(0);
+        expect(mock.api.explorer.list).toHaveBeenNthCalledWith(mock.api.explorer.list.mock.calls.length - 1, '/downloads/.hidden-dir', false);
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith(undefined, false);
+        expect(readExplorerPrefs().showHidden).toBe(false);
+
         mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR, VIDEO_1, AUDIO_1]) });
         await useExplorerStore.getState().revealFile(VIDEO_1.path);
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads', false);
         expect(useExplorerStore.getState().directory).toBe('/downloads');
         expect(useExplorerStore.getState().highlightedPath).toBe(VIDEO_1.path);
         expect(useAppStore.getState().downloadsView).toBe('explorer');
@@ -90,6 +113,7 @@ describe('explorerStore', () => {
         expect(useExplorerStore.getState().highlightedPath).toBeNull();
 
         useAppStore.setState({ downloadsView: 'history', notice: null });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR]) });
         mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR]) });
         await useExplorerStore.getState().revealFile('/downloads/deleted.mp4');
         expect(useAppStore.getState().downloadsView).toBe('history');
@@ -100,12 +124,64 @@ describe('explorerStore', () => {
 
         useAppStore.setState({ downloadsView: 'history', notice: null });
         mock.api.explorer.list.mockResolvedValueOnce({ ok: false, reason: 'denied' });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: false, reason: 'denied' });
         await useExplorerStore.getState().revealFile('/outside/video.mp4');
         expect(useAppStore.getState().downloadsView).toBe('history');
         expect(useAppStore.getState().notice).toEqual({
             kind: 'error',
             message: 'That file is outside the configured downloads folder.'
         });
+
+        const hiddenClip: ExplorerEntry = {
+            ...VIDEO_1,
+            path: '/downloads/.hidden-dir/secret.mp4',
+            name: 'secret.mp4'
+        };
+        useAppStore.setState({ downloadsView: 'history', notice: null });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: false, reason: 'denied' });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads/.hidden-dir', [hiddenClip]) });
+        await useExplorerStore.getState().revealFile(hiddenClip.path);
+        expect(useExplorerStore.getState().showHidden).toBe(true);
+        expect(readExplorerPrefs().showHidden).toBe(true);
+        expect(useExplorerStore.getState().directory).toBe('/downloads/.hidden-dir');
+        expect(useExplorerStore.getState().highlightedPath).toBe(hiddenClip.path);
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
+
+        await useExplorerStore.getState().setShowHidden(false);
+        useAppStore.setState({ downloadsView: 'history', notice: null });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: false, reason: 'denied' });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads/.hidden-dir', []) });
+        await useExplorerStore.getState().revealFile('/downloads/.hidden-dir/missing.mp4');
+        expect(useAppStore.getState().downloadsView).toBe('history');
+        expect(useAppStore.getState().notice).toEqual({
+            kind: 'error',
+            message: 'That file no longer exists.'
+        });
+    });
+
+    it('reloads with showHidden when toggled while the initial open is still in flight', async () => {
+        let resolveInitial: ((value: { ok: true; listing: ExplorerListing }) => void) | null = null;
+        mock.api.explorer.list.mockImplementationOnce(() => {
+            return new Promise((resolve) => {
+                resolveInitial = resolve;
+            });
+        });
+        const hiddenEntry: ExplorerEntry = { ...VIDEO_1, path: '/downloads/.secret.mp4', name: '.secret.mp4' };
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [VIDEO_1, hiddenEntry]) });
+
+        const initialOpen = useExplorerStore.getState().open();
+        expect(useExplorerStore.getState().loading).toBe(true);
+
+        await useExplorerStore.getState().setShowHidden(true);
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith(undefined, true);
+        expect(useExplorerStore.getState().showHidden).toBe(true);
+        expect(useExplorerStore.getState().entries).toEqual([VIDEO_1, hiddenEntry]);
+
+        resolveInitial!({ ok: true, listing: makeListing('/downloads', [VIDEO_1]) });
+        await initialOpen;
+        expect(useExplorerStore.getState().entries).toEqual([VIDEO_1, hiddenEntry]);
+        expect(useExplorerStore.getState().history).toEqual(['/downloads']);
+        expect(useExplorerStore.getState().historyIndex).toBe(0);
     });
 
     it('plays entries in internal player, steps next/previous, and runs fallback preview on error', async () => {
@@ -172,27 +248,41 @@ describe('explorerStore', () => {
         expect(useExplorerStore.getState().playing).toBeNull();
     });
 
-    it('persists sortBy, sortDirection, and viewMode in localStorage and falls back safely on invalid data', () => {
+    it('persists sortBy, sortDirection, viewMode, and showHidden in localStorage and falls back safely on invalid data', async () => {
         expect(readExplorerPrefs()).toEqual(DEFAULT_EXPLORER_PREFS);
 
         useExplorerStore.getState().setSortBy('modified');
         useExplorerStore.getState().toggleSortDirection();
         useExplorerStore.getState().setViewMode('list');
+        await useExplorerStore.getState().setShowHidden(true);
 
         expect(useExplorerStore.getState().sortBy).toBe('modified');
         expect(useExplorerStore.getState().sortDirection).toBe('desc');
         expect(useExplorerStore.getState().viewMode).toBe('list');
+        expect(useExplorerStore.getState().showHidden).toBe(true);
         expect(readExplorerPrefs()).toEqual({
             sortBy: 'modified',
             sortDirection: 'desc',
-            viewMode: 'list'
+            viewMode: 'list',
+            showHidden: true
         });
 
-        window.localStorage.setItem(EXPLORER_PREFS_STORAGE_KEY, JSON.stringify({ sortBy: 'invalid', sortDirection: 'bad', viewMode: 'list' }));
+        useExplorerStore.getState().setSortBy('size');
+        expect(readExplorerPrefs().showHidden).toBe(true);
+        useExplorerStore.getState().toggleSortDirection();
+        expect(readExplorerPrefs().showHidden).toBe(true);
+        useExplorerStore.getState().setViewMode('grid');
+        expect(readExplorerPrefs().showHidden).toBe(true);
+
+        window.localStorage.setItem(
+            EXPLORER_PREFS_STORAGE_KEY,
+            JSON.stringify({ sortBy: 'invalid', sortDirection: 'bad', viewMode: 'list', showHidden: 'yes' })
+        );
         expect(readExplorerPrefs()).toEqual({
             sortBy: 'name',
             sortDirection: 'asc',
-            viewMode: 'list'
+            viewMode: 'list',
+            showHidden: false
         });
 
         window.localStorage.setItem(EXPLORER_PREFS_STORAGE_KEY, '{not-json');
@@ -215,7 +305,7 @@ describe('explorerStore', () => {
             await vi.waitFor(() => {
                 expect(mock.api.explorer.list).toHaveBeenCalledTimes(2);
             });
-            expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads');
+            expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads', false);
             expect(useExplorerStore.getState().entries).toEqual([VIDEO_1]);
 
             mock.emitJobUpdate(makeJob({ id: 'dl-1', status: 'done', title: 'alpha', filePath: VIDEO_1.path }));

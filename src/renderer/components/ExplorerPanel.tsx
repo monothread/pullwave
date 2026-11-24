@@ -26,7 +26,7 @@ import {
 } from './explorerHelpers';
 import { IncrementalItems } from './IncrementalItems';
 import { LoadingMark } from './LoadingMark';
-import { SelectField } from './fields';
+import { SelectField, SwitchInput } from './fields';
 
 const LIST_ERROR_KEYS: Record<ExplorerListFailure, MessageKey> = {
     'not-found': 'explorer.error.not-found',
@@ -510,6 +510,9 @@ export function ExplorerPanel() {
     const historyIndex = useExplorerStore((state) => {
         return state.historyIndex;
     });
+    const showHidden = useExplorerStore((state) => {
+        return state.showHidden;
+    });
     const filter = useExplorerStore((state) => {
         return state.filter;
     });
@@ -548,6 +551,9 @@ export function ExplorerPanel() {
     });
     const goUp = useExplorerStore((state) => {
         return state.goUp;
+    });
+    const setShowHidden = useExplorerStore((state) => {
+        return state.setShowHidden;
     });
     const setFilter = useExplorerStore((state) => {
         return state.setFilter;
@@ -931,6 +937,16 @@ export function ExplorerPanel() {
                         {sortDirection === 'asc' ? '↑' : '↓'}
                     </button>
                 </div>
+
+                <label className="explorer__hidden-toggle">
+                    <SwitchInput
+                        label={t('explorer.showHidden')}
+                        checked={showHidden}
+                        onChange={(checked) => {
+                            void setShowHidden(checked);
+                        }}
+                    />
+                </label>
 
                 <div className="explorer__view-toggle" role="group" aria-label={`${t('explorer.view.grid')} / ${t('explorer.view.list')}`}>
                     <button

@@ -552,6 +552,10 @@
     cursor: pointer;
 }
 
+.explorer__hidden-toggle {
+    cursor: pointer;
+}
+
 .explorer__visual {
     display: block;
     position: relative;

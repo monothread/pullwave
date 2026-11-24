@@ -70,7 +70,7 @@ describe('HistoryList', () => {
         const buttons = screen.getAllByRole('button', { name: 'SHOW FILE' });
         expect(buttons).toHaveLength(1);
         await userEvent.setup().click(buttons[0] as HTMLElement);
-        expect(mock.api.explorer.list).toHaveBeenCalledWith('/d');
+        expect(mock.api.explorer.list).toHaveBeenCalledWith('/d', false);
         expect(useAppStore.getState().downloadsView).toBe('explorer');
         expect(useExplorerStore.getState().highlightedPath).toBe('/d/Done Video.mp4');
     });

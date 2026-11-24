@@ -6,7 +6,7 @@ import { ExplorerPanel } from '@renderer/components/ExplorerPanel';
 import { useAppStore } from '@renderer/store/appStore';
 import { useConvertStore } from '@renderer/store/convertStore';
 import { useCutStore } from '@renderer/store/cutStore';
-import { DEFAULT_EXPLORER_PREFS, useExplorerStore } from '@renderer/store/explorerStore';
+import { DEFAULT_EXPLORER_PREFS, readExplorerPrefs, useExplorerStore } from '@renderer/store/explorerStore';
 import { useMergeStore } from '@renderer/store/mergeStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -101,6 +101,76 @@ describe('ExplorerPanel', () => {
         await user.type(screen.getByLabelText('Filter by name'), 'demo');
         expect(screen.getByText('demo.mp4')).toBeInTheDocument();
         expect(screen.queryByText('track.mp3')).not.toBeInTheDocument();
+    });
+
+    it('toggles hidden folders and media files via the Hidden switch and persists the choice', async () => {
+        const user = userEvent.setup();
+        const hiddenFolder: ExplorerEntry = {
+            path: '/downloads/.Secret',
+            name: '.Secret',
+            kind: 'directory',
+            extension: '',
+            sizeBytes: 0,
+            modifiedAt: 1700000003000,
+            token: null,
+            thumbnailUrl: null,
+            mediaUrl: null
+        };
+        const hiddenVideo: ExplorerEntry = {
+            path: '/downloads/.clip.mp4',
+            name: '.clip.mp4',
+            kind: 'video',
+            extension: '.mp4',
+            sizeBytes: 1024,
+            modifiedAt: 1700000004000,
+            token: 3,
+            thumbnailUrl: 'pullwave-explorer://thumbnail/3',
+            mediaUrl: 'pullwave-explorer://media/3'
+        };
+        const hiddenAudio: ExplorerEntry = {
+            path: '/downloads/.song.mp3',
+            name: '.song.mp3',
+            kind: 'audio',
+            extension: '.mp3',
+            sizeBytes: 512,
+            modifiedAt: 1700000005000,
+            token: 4,
+            thumbnailUrl: null,
+            mediaUrl: 'pullwave-explorer://media/4'
+        };
+        mock.api.explorer.list.mockImplementation(async (_directory?: string, showHidden?: boolean) => {
+            return {
+                ok: true,
+                listing: {
+                    ...LISTING,
+                    entries: showHidden === true ? [FOLDER, hiddenFolder, VIDEO, hiddenVideo, AUDIO, hiddenAudio] : [FOLDER, VIDEO, AUDIO]
+                }
+            };
+        });
+
+        render(<ExplorerPanel />);
+        expect(await screen.findByText('demo.mp4')).toBeInTheDocument();
+        const hiddenSwitch = screen.getByRole('switch', { name: 'Hidden' });
+        expect(hiddenSwitch).not.toBeChecked();
+        expect(screen.queryByText('.Secret')).not.toBeInTheDocument();
+        expect(screen.queryByText('.clip.mp4')).not.toBeInTheDocument();
+        expect(screen.queryByText('.song.mp3')).not.toBeInTheDocument();
+
+        await user.click(hiddenSwitch);
+        expect(hiddenSwitch).toBeChecked();
+        expect(readExplorerPrefs().showHidden).toBe(true);
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads', true);
+        expect(await screen.findByText('.Secret')).toBeInTheDocument();
+        expect(screen.getByText('.clip.mp4')).toBeInTheDocument();
+        expect(screen.getByText('.song.mp3')).toBeInTheDocument();
+
+        await user.click(hiddenSwitch);
+        expect(hiddenSwitch).not.toBeChecked();
+        expect(readExplorerPrefs().showHidden).toBe(false);
+        expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads', false);
+        expect(screen.queryByText('.Secret')).not.toBeInTheDocument();
+        expect(screen.queryByText('.clip.mp4')).not.toBeInTheDocument();
+        expect(screen.queryByText('.song.mp3')).not.toBeInTheDocument();
     });
 
     it('opens video directly by clicking its card, navigates next/previous, and falls back on media error', async () => {

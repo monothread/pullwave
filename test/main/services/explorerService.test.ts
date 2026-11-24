@@ -6,6 +6,7 @@ import {
     createExplorerMediaHandler,
     ExplorerService,
     parseExplorerMediaUrl,
+    parseWindowsHiddenOutput,
     validateEntryName
 } from '@main/services/explorerService';
 import { ExplorerThumbnails, thumbnailCacheKey } from '@main/services/explorerThumbnails';
@@ -29,6 +30,9 @@ describe('ExplorerService', () => {
         writeFileSync(join(mediaDir, 'movie.mp4'), 'video-bytes');
         writeFileSync(join(mediaDir, 'song.mp3'), 'audio-bytes');
         writeFileSync(join(mediaDir, '.secret.mp4'), 'hidden-video');
+        writeFileSync(join(mediaDir, '.secret.mp3'), 'hidden-audio');
+        writeFileSync(join(mediaDir, '.secret.txt'), 'hidden-non-media');
+        writeFileSync(join(mediaDir, '.hidden-dir', 'inside.mp4'), 'inside-hidden-video');
         writeFileSync(join(mediaDir, 'notes.txt'), 'not media');
         writeFileSync(join(mediaDir, 'photo.png'), 'not media');
 
@@ -69,7 +73,8 @@ describe('ExplorerService', () => {
         expect(validateEntryName('', 'linux')).toBeNull();
         expect(validateEntryName('.', 'linux')).toBeNull();
         expect(validateEntryName('..', 'linux')).toBeNull();
-        expect(validateEntryName('.hidden', 'linux')).toBeNull();
+        expect(validateEntryName('.hidden', 'linux')).toBe('.hidden');
+        expect(validateEntryName('.hidden', 'win32')).toBe('.hidden');
         expect(validateEntryName('a/b', 'linux')).toBeNull();
         expect(validateEntryName('a\\b', 'linux')).toBeNull();
         expect(validateEntryName('bad:name', 'win32')).toBeNull();
@@ -137,6 +142,186 @@ describe('ExplorerService', () => {
         expect(await service.list(join(mediaDir, '.hidden-dir'))).toEqual({ ok: false, reason: 'denied' });
         expect(await service.list(join(mediaDir, 'does-not-exist'))).toEqual({ ok: false, reason: 'not-found' });
         expect(await service.list(join(mediaDir, 'movie.mp4'))).toEqual({ ok: false, reason: 'not-directory' });
+
+        const withHidden = await service.list(mediaDir, true);
+        expect(withHidden.ok).toBe(true);
+        if (withHidden.ok) {
+            expect(
+                withHidden.listing.entries
+                    .map((entry) => {
+                        return entry.name;
+                    })
+                    .sort()
+            ).toEqual(['.hidden-dir', '.secret.mp3', '.secret.mp4', 'Clips', 'movie.mp4', 'song.mp3']);
+            const secretVideo = withHidden.listing.entries.find((entry) => {
+                return entry.name === '.secret.mp4';
+            });
+            const secretAudio = withHidden.listing.entries.find((entry) => {
+                return entry.name === '.secret.mp3';
+            });
+            expect(secretVideo?.kind).toBe('video');
+            expect(secretVideo?.token).not.toBeNull();
+            expect(secretVideo?.thumbnailUrl).toMatch(/^pullwave-explorer:\/\/thumbnail\/\d+$/);
+            expect(secretVideo?.mediaUrl).toMatch(/^pullwave-explorer:\/\/media\/\d+$/);
+            expect(secretAudio?.kind).toBe('audio');
+            expect(secretAudio?.token).not.toBeNull();
+            expect(secretAudio?.thumbnailUrl).toBeNull();
+            expect(secretAudio?.mediaUrl).toMatch(/^pullwave-explorer:\/\/media\/\d+$/);
+            expect(service.resolveToken(secretVideo!.token!)?.path).toBe(join(mediaDir, '.secret.mp4'));
+            expect(service.resolveToken(secretAudio!.token!)?.path).toBe(join(mediaDir, '.secret.mp3'));
+        }
+
+        const hiddenDirListed = await service.list(join(mediaDir, '.hidden-dir'), true);
+        expect(hiddenDirListed.ok).toBe(true);
+        if (hiddenDirListed.ok) {
+            expect(hiddenDirListed.listing.parent).toBe(mediaDir);
+            expect(hiddenDirListed.listing.breadcrumbs).toEqual([
+                { name: 'media', path: mediaDir },
+                { name: '.hidden-dir', path: join(mediaDir, '.hidden-dir') }
+            ]);
+            expect(
+                hiddenDirListed.listing.entries.map((entry) => {
+                    return entry.name;
+                })
+            ).toEqual(['inside.mp4']);
+            const inside = hiddenDirListed.listing.entries[0]!;
+            expect(service.resolveToken(inside.token!)?.path).toBe(join(mediaDir, '.hidden-dir', 'inside.mp4'));
+        }
+        expect(await service.list(workDir, true)).toEqual({ ok: false, reason: 'denied' });
+    });
+
+    it('parses Windows hidden attributes output and filters Windows-hidden folders and media when showHidden is false', async () => {
+        expect(parseWindowsHiddenOutput('')).toEqual({ targetHidden: false, hiddenNames: new Set() });
+        expect(parseWindowsHiddenOutput('{bad')).toEqual({ targetHidden: false, hiddenNames: new Set() });
+        expect(parseWindowsHiddenOutput('null')).toEqual({ targetHidden: false, hiddenNames: new Set() });
+        expect(parseWindowsHiddenOutput(JSON.stringify({ targetHidden: false, hiddenNames: 'Secret.MP4' }))).toEqual({
+            targetHidden: false,
+            hiddenNames: new Set(['secret.mp4'])
+        });
+        expect(parseWindowsHiddenOutput(JSON.stringify({ targetHidden: true, hiddenNames: ['Clips', 'Song.MP3', 42, ''] }))).toEqual({
+            targetHidden: true,
+            hiddenNames: new Set(['clips', 'song.mp3'])
+        });
+
+        const readWindowsHidden = vi.fn(async (directory: string) => {
+            if (directory === subDir) {
+                return { targetHidden: true, hiddenNames: new Set<string>() };
+            }
+            return { targetHidden: false, hiddenNames: new Set<string>(['Clips', 'SONG.MP3']) };
+        });
+        const winService = new ExplorerService({
+            defaultDirectory: () => {
+                return mediaDir;
+            },
+            trashItem,
+            openExternal,
+            thumbnails,
+            platform: 'win32',
+            readWindowsHidden
+        });
+
+        const listed = await winService.list(mediaDir, false);
+        expect(readWindowsHidden).toHaveBeenCalledWith(mediaDir, mediaDir);
+        expect(listed.ok).toBe(true);
+        if (listed.ok) {
+            expect(
+                listed.listing.entries
+                    .map((entry) => {
+                        return entry.name;
+                    })
+                    .sort()
+            ).toEqual(['movie.mp4']);
+        }
+
+        expect(await winService.list(subDir, false)).toEqual({ ok: false, reason: 'denied' });
+
+        readWindowsHidden.mockClear();
+        const listedWithHidden = await winService.list(mediaDir, true);
+        expect(readWindowsHidden).not.toHaveBeenCalled();
+        expect(listedWithHidden.ok).toBe(true);
+        if (listedWithHidden.ok) {
+            expect(
+                listedWithHidden.listing.entries
+                    .map((entry) => {
+                        return entry.name;
+                    })
+                    .sort()
+            ).toEqual(['.hidden-dir', '.secret.mp3', '.secret.mp4', 'Clips', 'movie.mp4', 'song.mp3']);
+        }
+
+        const listedSubWithHidden = await winService.list(subDir, true);
+        expect(readWindowsHidden).not.toHaveBeenCalled();
+        expect(listedSubWithHidden.ok).toBe(true);
+
+        const failingReadWindowsHidden = vi.fn(async () => {
+            throw new Error('powershell failed');
+        });
+        const fallbackWinService = new ExplorerService({
+            defaultDirectory: () => {
+                return mediaDir;
+            },
+            trashItem,
+            openExternal,
+            thumbnails,
+            platform: 'win32',
+            readWindowsHidden: failingReadWindowsHidden
+        });
+        const fallbackListed = await fallbackWinService.list(mediaDir, false);
+        expect(fallbackListed.ok).toBe(true);
+        if (fallbackListed.ok) {
+            expect(
+                fallbackListed.listing.entries
+                    .map((entry) => {
+                        return entry.name;
+                    })
+                    .sort()
+            ).toEqual(['Clips', 'movie.mp4', 'song.mp3']);
+        }
+
+        const winHiddenDir = join(mediaDir, 'WinHidden');
+        mkdirSync(winHiddenDir, { recursive: true });
+        writeFileSync(join(winHiddenDir, 'inner.mp4'), 'hidden-dir-video');
+        const linkToHiddenDir = join(mediaDir, 'PublicLink');
+        symlinkSync(winHiddenDir, linkToHiddenDir);
+        const linkToHiddenFile = join(mediaDir, 'PublicFileLink.mp4');
+        symlinkSync(join(mediaDir, 'song.mp3'), linkToHiddenFile);
+        const linkToOtherDirHiddenFile = join(mediaDir, 'CrossLink.mp4');
+        symlinkSync(join(winHiddenDir, 'inner.mp4'), linkToOtherDirHiddenFile);
+        const rootAlias = join(workDir, 'media-alias');
+        symlinkSync(mediaDir, rootAlias);
+
+        const symlinkReadWindowsHidden = vi.fn(async (directory: string) => {
+            if (directory === winHiddenDir) {
+                return { targetHidden: true, hiddenNames: new Set<string>() };
+            }
+            if (directory === mediaDir) {
+                return { targetHidden: false, hiddenNames: new Set<string>(['WinHidden', 'song.mp3']) };
+            }
+            return { targetHidden: false, hiddenNames: new Set<string>() };
+        });
+        const winSymlinkService = new ExplorerService({
+            defaultDirectory: () => {
+                return rootAlias;
+            },
+            trashItem,
+            openExternal,
+            thumbnails,
+            platform: 'win32',
+            readWindowsHidden: symlinkReadWindowsHidden
+        });
+
+        expect(await winSymlinkService.list(join(rootAlias, 'PublicLink'), false)).toEqual({ ok: false, reason: 'denied' });
+        const aliasRootListed = await winSymlinkService.list(rootAlias, false);
+        expect(aliasRootListed.ok).toBe(true);
+        if (aliasRootListed.ok) {
+            expect(
+                aliasRootListed.listing.entries
+                    .map((entry) => {
+                        return entry.name;
+                    })
+                    .sort()
+            ).toEqual(['Clips', 'movie.mp4']);
+        }
     });
 
     it('creates folders, renames folders and media inside root, trashes only media and 100% empty folders, and blocks actions outside root', async () => {
@@ -144,7 +329,19 @@ describe('ExplorerService', () => {
         expect(existsSync(join(mediaDir, 'New Folder'))).toBe(true);
         expect(await service.createFolder(mediaDir, 'New Folder')).toEqual({ ok: false, reason: 'exists' });
         expect(await service.createFolder(mediaDir, 'bad/name')).toEqual({ ok: false, reason: 'invalid-name' });
-        expect(await service.createFolder(mediaDir, '.dotfolder')).toEqual({ ok: false, reason: 'invalid-name' });
+        expect(await service.createFolder(mediaDir, '.dotfolder')).toEqual({ ok: true, path: join(mediaDir, '.dotfolder') });
+        expect(existsSync(join(mediaDir, '.dotfolder'))).toBe(true);
+        expect(await service.trash(join(mediaDir, '.dotfolder'))).toEqual({ ok: true });
+        expect(await service.trash(join(mediaDir, '.hidden-dir'))).toEqual({ ok: false, reason: 'not-empty' });
+        expect(await service.openFolder(join(mediaDir, '.hidden-dir'))).toEqual({ ok: true });
+        expect(await service.openExternal(join(mediaDir, '.secret.mp4'))).toEqual({ ok: true });
+        expect(await service.rename(join(mediaDir, '.secret.mp4'), '.renamed.mp4')).toEqual({
+            ok: true,
+            path: join(mediaDir, '.renamed.mp4'),
+            name: '.renamed.mp4'
+        });
+        expect(await service.rename(join(mediaDir, '.renamed.mp4'), '.mp4')).toEqual({ ok: false, reason: 'invalid-name' });
+        expect(await service.trash(join(mediaDir, '.renamed.mp4'))).toEqual({ ok: true });
         expect(await service.createFolder(workDir, 'Outside')).toEqual({ ok: false, reason: 'denied' });
 
         expect(await service.rename(join(mediaDir, 'movie.mp4'), 'film.mp4')).toEqual({
@@ -166,6 +363,10 @@ describe('ExplorerService', () => {
         writeFileSync(join(mediaDir, 'Archive', 'document.pdf'), 'important-doc');
         expect(await service.trash(join(mediaDir, 'Archive'))).toEqual({ ok: false, reason: 'not-empty' });
         rmSync(join(mediaDir, 'Archive', 'document.pdf'));
+
+        writeFileSync(join(mediaDir, 'Archive', '.hidden-only.txt'), 'secret');
+        expect(await service.trash(join(mediaDir, 'Archive'))).toEqual({ ok: false, reason: 'not-empty' });
+        rmSync(join(mediaDir, 'Archive', '.hidden-only.txt'));
 
         expect(await service.trash(join(mediaDir, 'notes.txt'))).toEqual({ ok: false, reason: 'denied' });
         expect(await service.trash(mediaDir)).toEqual({ ok: false, reason: 'denied' });
@@ -195,12 +396,28 @@ describe('ExplorerService', () => {
         writeFileSync(outsideVideo, 'outside-video');
         const outsideLink = join(mediaDir, 'escape.mp4');
         symlinkSync(outsideVideo, outsideLink);
+        const hiddenTargetLink = join(mediaDir, 'hidden-link.mp4');
+        symlinkSync(join(mediaDir, '.hidden-dir', 'inside.mp4'), hiddenTargetLink);
 
         const listed = await service.list();
         expect(listed.ok).toBe(true);
         if (listed.ok) {
             expect(
                 listed.listing.entries.some((entry) => {
+                    return entry.name === 'secret.mp4' || entry.name === 'escape.mp4' || entry.name === 'hidden-link.mp4';
+                })
+            ).toBe(false);
+        }
+        const listedWithHidden = await service.list(mediaDir, true);
+        expect(listedWithHidden.ok).toBe(true);
+        if (listedWithHidden.ok) {
+            expect(
+                listedWithHidden.listing.entries.some((entry) => {
+                    return entry.name === 'hidden-link.mp4';
+                })
+            ).toBe(true);
+            expect(
+                listedWithHidden.listing.entries.some((entry) => {
                     return entry.name === 'secret.mp4' || entry.name === 'escape.mp4';
                 })
             ).toBe(false);

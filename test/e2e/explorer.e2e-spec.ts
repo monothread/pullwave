@@ -45,8 +45,10 @@ test.beforeEach(() => {
     workDir = mkdtempSync(join(tmpdir(), 'pullwave-explorer-e2e-'));
     mediaDir = join(workDir, 'media');
     mkdirSync(join(mediaDir, 'Subfolder'), { recursive: true });
+    mkdirSync(join(mediaDir, '.HiddenFolder'), { recursive: true });
     writeFileSync(join(mediaDir, 'notes.txt'), 'hidden non-media');
     writeFileSync(join(mediaDir, 'readme.md'), 'hidden non-media');
+    writeFileSync(join(mediaDir, '.secret.txt'), 'hidden non-media');
     ffmpeg([
         '-f',
         'lavfi',
@@ -66,6 +68,18 @@ test.beforeEach(() => {
         join(mediaDir, 'Clip.mp4')
     ]);
     ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=523:duration=4', '-c:a', 'libmp3lame', join(mediaDir, 'Track.mp3')]);
+    ffmpeg([
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc=duration=2:size=160x120:rate=15',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        join(mediaDir, '.HiddenClip.mp4')
+    ]);
+    ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=330:duration=2', '-c:a', 'libmp3lame', join(mediaDir, '.HiddenTrack.mp3')]);
 });
 
 test.afterEach(async () => {
@@ -79,9 +93,31 @@ test('shows only folders, videos with thumbnails, and audio files, plays media b
     await expect(page.getByText('Clip.mp4')).toBeVisible({ timeout: 20000 });
     await expect(page.getByText('Track.mp3')).toBeVisible();
     await expect(page.getByText('Subfolder')).toBeVisible();
+    await expect(page.getByText('.HiddenFolder')).toHaveCount(0);
+    await expect(page.getByText('.HiddenClip.mp4')).toHaveCount(0);
+    await expect(page.getByText('.HiddenTrack.mp3')).toHaveCount(0);
+    await expect(page.getByText('.secret.txt')).toHaveCount(0);
     await expect(page.getByText('notes.txt')).toHaveCount(0);
     await expect(page.getByText('readme.md')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'OPEN FOLDER' })).toBeVisible();
+
+    const hiddenSwitch = page.getByRole('switch', { name: 'Hidden' });
+    await expect(hiddenSwitch).not.toBeChecked();
+    await hiddenSwitch.click();
+    await expect(hiddenSwitch).toBeChecked();
+    await expect(page.getByText('.HiddenFolder')).toBeVisible();
+    await expect(page.getByText('.HiddenClip.mp4')).toBeVisible();
+    await expect(page.getByText('.HiddenTrack.mp3')).toBeVisible();
+    await expect(page.getByText('.secret.txt')).toHaveCount(0);
+
+    await page.getByText('.HiddenFolder').click();
+    await expect(page.getByRole('button', { name: '.HiddenFolder', exact: true })).toBeVisible();
+    await hiddenSwitch.click();
+    await expect(hiddenSwitch).not.toBeChecked();
+    await expect(page.getByText('Clip.mp4')).toBeVisible();
+    await expect(page.getByText('.HiddenFolder')).toHaveCount(0);
+    await expect(page.getByText('.HiddenClip.mp4')).toHaveCount(0);
+    await expect(page.getByText('.HiddenTrack.mp3')).toHaveCount(0);
 
     const thumb = page.locator('img.explorer__thumb-img');
     await expect(thumb).toBeVisible();

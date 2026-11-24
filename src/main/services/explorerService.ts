@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import { lstat, mkdir, readdir, realpath, rename, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, parse, resolve, sep } from 'node:path';
 import {
@@ -23,9 +24,41 @@ import { serveFile, type MediaFileSystem } from './mediaProtocol';
 
 const BASE_MAX_TOKENS = 4000;
 const STAT_CONCURRENCY = 16;
+const WINDOWS_HIDDEN_TIMEOUT_MS = 5000;
+const WINDOWS_HIDDEN_MAX_BUFFER = 4 * 1024 * 1024;
 const WINDOWS_FORBIDDEN = /[<>:"/\\|?*]/;
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const POSIX_FORBIDDEN = /\//;
+const WINDOWS_HIDDEN_SCRIPT = [
+    '$h = [System.IO.FileAttributes]::Hidden',
+    "$root = [System.IO.Path]::GetFullPath($env:PULLWAVE_EXPLORER_ROOT).TrimEnd('\\', '/')",
+    "$dir = [System.IO.Path]::GetFullPath($env:PULLWAVE_EXPLORER_DIR).TrimEnd('\\', '/')",
+    '$targetHidden = $false',
+    '$cur = $dir',
+    'while ($cur.Length -gt $root.Length) {',
+    '    try { if (([System.IO.File]::GetAttributes($cur) -band $h) -ne 0) { $targetHidden = $true; break } } catch {}',
+    '    $parent = [System.IO.Path]::GetDirectoryName($cur)',
+    '    if ([string]::IsNullOrEmpty($parent) -or $parent -eq $cur) { break }',
+    "    $cur = $parent.TrimEnd('\\', '/')",
+    '}',
+    '$names = @()',
+    'if (-not $targetHidden) {',
+    '    try { $names = @([System.IO.DirectoryInfo]::new($env:PULLWAVE_EXPLORER_DIR).EnumerateFileSystemInfos() | Where-Object { ($_.Attributes -band $h) -ne 0 } | ForEach-Object { $_.Name }) } catch {}',
+    '}',
+    '$json = @{ targetHidden = $targetHidden; hiddenNames = $names } | ConvertTo-Json -Compress',
+    '$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)',
+    '[Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length)'
+].join('\n');
+
+export interface ExplorerHiddenSnapshot {
+    targetHidden: boolean;
+    hiddenNames: ReadonlySet<string>;
+}
+
+const EMPTY_HIDDEN_SNAPSHOT: ExplorerHiddenSnapshot = {
+    targetHidden: false,
+    hiddenNames: new Set<string>()
+};
 
 export interface ExplorerServiceDependencies {
     defaultDirectory: () => string;
@@ -34,6 +67,63 @@ export interface ExplorerServiceDependencies {
     thumbnails: ExplorerThumbnails;
     platform?: NodeJS.Platform;
     exists?: (path: string) => boolean | Promise<boolean>;
+    readWindowsHidden?: (directory: string, root: string) => Promise<ExplorerHiddenSnapshot>;
+}
+
+export function parseWindowsHiddenOutput(raw: string): ExplorerHiddenSnapshot {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+        return EMPTY_HIDDEN_SNAPSHOT;
+    }
+    try {
+        const parsed: unknown = JSON.parse(trimmed);
+        if (typeof parsed !== 'object' || parsed === null) {
+            return EMPTY_HIDDEN_SNAPSHOT;
+        }
+        const record = parsed as Record<string, unknown>;
+        const targetHidden = record['targetHidden'] === true;
+        const rawNames = record['hiddenNames'];
+        const hiddenNames = new Set<string>();
+        if (typeof rawNames === 'string' && rawNames.length > 0) {
+            hiddenNames.add(rawNames.toLowerCase());
+        } else if (Array.isArray(rawNames)) {
+            for (const entry of rawNames) {
+                if (typeof entry === 'string' && entry.length > 0) {
+                    hiddenNames.add(entry.toLowerCase());
+                }
+            }
+        }
+        return { targetHidden, hiddenNames };
+    } catch {
+        return EMPTY_HIDDEN_SNAPSHOT;
+    }
+}
+
+function defaultReadWindowsHidden(directory: string, root: string): Promise<ExplorerHiddenSnapshot> {
+    return new Promise((resolvePromise) => {
+        execFile(
+            'powershell.exe',
+            ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_HIDDEN_SCRIPT],
+            {
+                encoding: 'utf-8',
+                timeout: WINDOWS_HIDDEN_TIMEOUT_MS,
+                maxBuffer: WINDOWS_HIDDEN_MAX_BUFFER,
+                windowsHide: true,
+                env: {
+                    ...process.env,
+                    PULLWAVE_EXPLORER_DIR: directory,
+                    PULLWAVE_EXPLORER_ROOT: root
+                }
+            },
+            (error, stdout) => {
+                if (error !== null || typeof stdout !== 'string') {
+                    resolvePromise(EMPTY_HIDDEN_SNAPSHOT);
+                    return;
+                }
+                resolvePromise(parseWindowsHiddenOutput(stdout));
+            }
+        );
+    });
 }
 
 function errorCodeOf(error: unknown): string {
@@ -101,7 +191,7 @@ export function validateEntryName(rawName: string, platform: NodeJS.Platform = p
         return null;
     }
     const name = rawName.trim();
-    if (name.length === 0 || name.startsWith('.')) {
+    if (name.length === 0 || name === '.' || name === '..') {
         return null;
     }
     for (let index = 0; index < name.length; index += 1) {
@@ -227,7 +317,7 @@ export class ExplorerService {
         this.deps.thumbnails.cancelPreview();
     }
 
-    async list(directory?: string): Promise<ExplorerListResponse> {
+    async list(directory?: string, showHidden = false): Promise<ExplorerListResponse> {
         const platform = this.deps.platform ?? process.platform;
         const root = this.rootDirectory();
         const rootKey = pathKeyOf(root, platform);
@@ -245,7 +335,7 @@ export class ExplorerService {
             return { ok: false, reason: 'not-found' };
         }
         const target = resolve(requested);
-        if (!this.isInsideRoot(target, root, platform, true)) {
+        if (!this.isInsideRoot(target, root, platform, true, showHidden)) {
             return { ok: false, reason: 'denied' };
         }
         this.listSeq += 1;
@@ -259,23 +349,35 @@ export class ExplorerService {
         if (!dirStat.isDirectory()) {
             return { ok: false, reason: 'not-directory' };
         }
-        const realRoot = await this.resolveRealRootIfInside(target, root, platform, true);
-        if (realRoot === null) {
+        const resolved = await this.resolveRealRootIfInside(target, root, platform, true, showHidden);
+        if (resolved === null) {
             return { ok: false, reason: 'denied' };
         }
+        const { realRoot, realTarget } = resolved;
         let dirents;
         try {
             dirents = await readdir(target, { withFileTypes: true });
         } catch (error) {
             return { ok: false, reason: mapListError(error) };
         }
+        const isAtRoot = pathKeyOf(target, platform) === pathKeyOf(root, platform);
+        const needWindowsHidden = !showHidden && platform === 'win32' && (!isAtRoot || dirents.length > 0);
+        const windowsHidden = needWindowsHidden ? await this.readWindowsHiddenSnapshot(target, root, realTarget, realRoot, platform) : EMPTY_HIDDEN_SNAPSHOT;
+        if (windowsHidden.targetHidden) {
+            return { ok: false, reason: 'denied' };
+        }
         if (seq === this.listSeq && this.currentDirectory !== target) {
             this.deps.thumbnails.cancelPending();
             this.currentDirectory = target;
         }
-        const visibleDirents = dirents.filter((dirent) => {
-            return !dirent.name.startsWith('.');
-        });
+        const windowsHiddenKeys = windowsHidden.hiddenNames;
+        const realTargetDirKey = pathKeyOf(realTarget, platform);
+        const linkDirHiddenCache = new Map<string, Promise<ExplorerHiddenSnapshot>>();
+        const visibleDirents = showHidden
+            ? dirents
+            : dirents.filter((dirent) => {
+                  return !dirent.name.startsWith('.') && !windowsHiddenKeys.has(pathKeyOf(dirent.name, platform));
+              });
         const built = await Promise.all(
             visibleDirents.map((dirent) => {
                 return this.statLimit(async (): Promise<ExplorerEntry | null> => {
@@ -286,8 +388,27 @@ export class ExplorerService {
                         resolvedPath = await realpath(fullPath).catch(() => {
                             return '';
                         });
-                        if (resolvedPath.length === 0 || !this.isInsideRoot(resolvedPath, realRoot, platform, false)) {
+                        if (resolvedPath.length === 0 || !this.isInsideRoot(resolvedPath, realRoot, platform, false, showHidden)) {
                             return null;
+                        }
+                        if (!showHidden && platform === 'win32') {
+                            const resolvedDir = dirname(resolvedPath);
+                            const resolvedDirKey = pathKeyOf(resolvedDir, platform);
+                            if (resolvedDirKey === realTargetDirKey) {
+                                if (windowsHiddenKeys.has(pathKeyOf(basename(resolvedPath), platform))) {
+                                    return null;
+                                }
+                            } else {
+                                let pending = linkDirHiddenCache.get(resolvedDirKey);
+                                if (pending === undefined) {
+                                    pending = this.readWindowsHiddenNormalized(resolvedDir, realRoot, platform);
+                                    linkDirHiddenCache.set(resolvedDirKey, pending);
+                                }
+                                const linkParentHidden = await pending;
+                                if (linkParentHidden.targetHidden || linkParentHidden.hiddenNames.has(pathKeyOf(basename(resolvedPath), platform))) {
+                                    return null;
+                                }
+                            }
                         }
                         info = await stat(resolvedPath).catch(() => {
                             return null;
@@ -355,9 +476,8 @@ export class ExplorerService {
             }
             entries.push(item);
         }
-        const isAtRoot = pathKeyOf(target, platform) === pathKeyOf(root, platform);
         const parentCandidate = dirname(target);
-        const parent = isAtRoot || parentCandidate === target || !this.isInsideRoot(parentCandidate, root, platform, true) ? null : parentCandidate;
+        const parent = isAtRoot || parentCandidate === target || !this.isInsideRoot(parentCandidate, root, platform, true, showHidden) ? null : parentCandidate;
         return {
             ok: true,
             listing: {
@@ -561,8 +681,8 @@ export class ExplorerService {
         return resolve(this.deps.defaultDirectory());
     }
 
-    private isInsideRoot(targetPath: string, rootPath: string, platform: NodeJS.Platform, allowRoot: boolean): boolean {
-        if (!isWithinRoot(targetPath, rootPath, platform) || hasHiddenRelativeSegment(targetPath, rootPath)) {
+    private isInsideRoot(targetPath: string, rootPath: string, platform: NodeJS.Platform, allowRoot: boolean, allowHidden = true): boolean {
+        if (!isWithinRoot(targetPath, rootPath, platform) || (!allowHidden && hasHiddenRelativeSegment(targetPath, rootPath))) {
             return false;
         }
         if (!allowRoot && pathKeyOf(resolve(targetPath), platform) === pathKeyOf(resolve(rootPath), platform)) {
@@ -575,8 +695,9 @@ export class ExplorerService {
         targetPath: string,
         rootPath: string,
         platform: NodeJS.Platform,
-        allowRoot: boolean
-    ): Promise<string | null> {
+        allowRoot: boolean,
+        allowHidden = true
+    ): Promise<{ realRoot: string; realTarget: string } | null> {
         const [realRoot, realTarget] = await Promise.all([
             realpath(rootPath).catch(() => {
                 return '';
@@ -588,11 +709,61 @@ export class ExplorerService {
         if (realRoot.length === 0 || realTarget.length === 0) {
             return null;
         }
-        return this.isInsideRoot(realTarget, realRoot, platform, allowRoot) ? realRoot : null;
+        return this.isInsideRoot(realTarget, realRoot, platform, allowRoot, allowHidden) ? { realRoot, realTarget } : null;
     }
 
-    private async isRealInsideRoot(targetPath: string, rootPath: string, platform: NodeJS.Platform, allowRoot: boolean): Promise<boolean> {
-        return (await this.resolveRealRootIfInside(targetPath, rootPath, platform, allowRoot)) !== null;
+    private async isRealInsideRoot(targetPath: string, rootPath: string, platform: NodeJS.Platform, allowRoot: boolean, allowHidden = true): Promise<boolean> {
+        return (await this.resolveRealRootIfInside(targetPath, rootPath, platform, allowRoot, allowHidden)) !== null;
+    }
+
+    private async readWindowsHiddenNormalized(directory: string, root: string, platform: NodeJS.Platform): Promise<ExplorerHiddenSnapshot> {
+        try {
+            if (this.deps.readWindowsHidden === undefined) {
+                return await defaultReadWindowsHidden(directory, root);
+            }
+            const raw = await this.deps.readWindowsHidden(directory, root);
+            if (raw.hiddenNames.size === 0) {
+                return { targetHidden: raw.targetHidden, hiddenNames: EMPTY_HIDDEN_SNAPSHOT.hiddenNames };
+            }
+            const normalized = new Set<string>();
+            for (const name of raw.hiddenNames) {
+                normalized.add(pathKeyOf(name, platform));
+            }
+            return { targetHidden: raw.targetHidden, hiddenNames: normalized };
+        } catch {
+            return EMPTY_HIDDEN_SNAPSHOT;
+        }
+    }
+
+    private async readWindowsHiddenSnapshot(
+        target: string,
+        root: string,
+        realTarget: string,
+        realRoot: string,
+        platform: NodeJS.Platform
+    ): Promise<ExplorerHiddenSnapshot> {
+        const realSnapshot = await this.readWindowsHiddenNormalized(realTarget, realRoot, platform);
+        if (realSnapshot.targetHidden) {
+            return realSnapshot;
+        }
+        if (pathKeyOf(realTarget, platform) === pathKeyOf(target, platform) && pathKeyOf(realRoot, platform) === pathKeyOf(root, platform)) {
+            return realSnapshot;
+        }
+        const logicalSnapshot = await this.readWindowsHiddenNormalized(target, root, platform);
+        if (logicalSnapshot.targetHidden) {
+            return { targetHidden: true, hiddenNames: EMPTY_HIDDEN_SNAPSHOT.hiddenNames };
+        }
+        if (logicalSnapshot.hiddenNames.size === 0) {
+            return realSnapshot;
+        }
+        if (realSnapshot.hiddenNames.size === 0) {
+            return logicalSnapshot;
+        }
+        const merged = new Set<string>(realSnapshot.hiddenNames);
+        for (const name of logicalSnapshot.hiddenNames) {
+            merged.add(name);
+        }
+        return { targetHidden: false, hiddenNames: merged };
     }
 
     private async pathExists(path: string): Promise<boolean> {

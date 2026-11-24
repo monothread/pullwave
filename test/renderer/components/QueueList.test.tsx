@@ -168,7 +168,7 @@ describe('QueueList', () => {
             }
         });
         await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'SHOW FILE' }));
-        expect(mock.api.explorer.list).toHaveBeenCalledWith('/d');
+        expect(mock.api.explorer.list).toHaveBeenCalledWith('/d', false);
         expect(useAppStore.getState().downloadsView).toBe('explorer');
         await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'REMOVE' }));
         expect(mock.api.removeJob).not.toHaveBeenCalled();

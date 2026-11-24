@@ -83,7 +83,7 @@ describe('ConvertPanel', () => {
             }
         });
         await user.click(screen.getByRole('button', { name: 'SHOW FILE' }));
-        expect(mock.api.explorer.list).toHaveBeenCalledWith('/v');
+        expect(mock.api.explorer.list).toHaveBeenCalledWith('/v', false);
         expect(useAppStore.getState().downloadsView).toBe('explorer');
         expect(useExplorerStore.getState().highlightedPath).toBe('/v/talk.flac');
     });

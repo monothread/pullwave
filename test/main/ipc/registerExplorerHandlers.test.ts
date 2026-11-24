@@ -38,10 +38,12 @@ describe('registerExplorerHandlers', () => {
 
         registerExplorerHandlers(ipcMain, explorer as unknown as ExplorerService);
 
-        await handlers.get(IPC.explorerList)!({}, '/dir');
-        expect(explorer.list).toHaveBeenCalledWith('/dir');
-        await handlers.get(IPC.explorerList)!({}, '');
-        expect(explorer.list).toHaveBeenCalledWith(undefined);
+        await handlers.get(IPC.explorerList)!({}, '/dir', true);
+        expect(explorer.list).toHaveBeenCalledWith('/dir', true);
+        await handlers.get(IPC.explorerList)!({}, '/dir', false);
+        expect(explorer.list).toHaveBeenCalledWith('/dir', false);
+        await handlers.get(IPC.explorerList)!({}, '', 'yes');
+        expect(explorer.list).toHaveBeenCalledWith(undefined, false);
 
         expect(await handlers.get(IPC.explorerOpenFolder)!({}, '/a')).toEqual({ ok: true });
         expect(explorer.openFolder).toHaveBeenCalledWith('/a');
