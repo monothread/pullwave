@@ -1,6 +1,6 @@
 {
   "name": "pullwave",
-  "version": "0.29.6",
+  "version": "0.29.7",
   "description": "Desktop video downloader (yt-dlp), anime library & player (ani-cli), and manga reader (Mihon/Tachiyomi) for Linux and Windows.",
   "main": "out/main/index.js",
   "author": {
