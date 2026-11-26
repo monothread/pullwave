@@ -13,6 +13,7 @@ import {
     downloadedTotals,
     groupLibrary,
     inGroup,
+    libraryByExtension,
     isNewChapter,
     activeGroup,
     checksForSource,
@@ -843,6 +844,38 @@ describe('sourceLabelsOf', () => {
         expect(sourceLabelsOf(sources, [{ sourceId: '999' }, { sourceId: '123' }])).toEqual(['MangaDex · EN']);
         expect(sourceLabelsOf(sources, [])).toEqual([]);
         expect(sourceLabelsOf([], [{ sourceId: '123' }])).toEqual([]);
+    });
+});
+
+describe('libraryByExtension', () => {
+    const sources = [
+        makeSource({ id: '1', extensionPkg: 'pkg.dex' }),
+        makeSource({ id: '2', lang: 'pt', extensionPkg: 'pkg.dex' }),
+        makeSource({ id: '3', name: 'Other', extensionPkg: 'pkg.other' }),
+        makeSource({ id: '4', name: 'Loose', extensionPkg: null })
+    ];
+    const dexEn = makeLibraryManga([], { id: 10, sourceId: '1', title: 'One Piece' });
+    const dexPt = makeLibraryManga([], { id: 11, sourceId: '2', title: 'Bleach' });
+    const other = makeLibraryManga([], { id: 12, sourceId: '3', title: 'Naruto' });
+    const loose = makeLibraryManga([], { id: 13, sourceId: '4', title: 'Loose' });
+    const gone = makeLibraryManga([], { id: 14, sourceId: '99', title: 'Gone' });
+
+    it('gives the mangas of each extension, joining the sources of all its languages, in the order of the library', () => {
+        expect(libraryByExtension([dexEn, other, dexPt], sources)).toEqual(
+            new Map([
+                ['pkg.dex', [dexEn, dexPt]],
+                ['pkg.other', [other]]
+            ])
+        );
+    });
+
+    it('leaves out the mangas of a source with no extension, or of a source the list does not have', () => {
+        expect(libraryByExtension([loose, gone, other], sources)).toEqual(new Map([['pkg.other', [other]]]));
+    });
+
+    it('is empty with no mangas or no sources', () => {
+        expect(libraryByExtension([], sources)).toEqual(new Map());
+        expect(libraryByExtension([dexEn, other], [])).toEqual(new Map());
     });
 });
 

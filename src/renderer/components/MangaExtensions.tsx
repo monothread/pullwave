@@ -1,15 +1,43 @@
 import { IncrementalItems } from './IncrementalItems';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { MangaExtension } from '@shared/manga';
 import { useMangaLanguage } from '../hooks/useMangaLanguage';
+import { useShownLibrary } from '../hooks/useShownManga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { UPDATE_ALL_KEY, useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
 import { MangaExtensionsAbout } from './MangaExtensionsAbout';
 import { TextField, ToggleField } from './fields';
-import { extensionLanguages, filterExtensions, isListed } from './mangaText';
+import { extensionLanguages, filterExtensions, isListed, libraryByExtension } from './mangaText';
+import { MangaExtensionLibraryDialog } from './MangaExtensionLibraryDialog';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { NotFound } from './NotFound';
+
+interface LibraryCountButtonProps {
+    extension: MangaExtension;
+    count: number;
+    onOpen: (extension: MangaExtension) => void;
+}
+
+function LibraryCountButton({ extension, count, onOpen }: LibraryCountButtonProps) {
+    const t = useTranslator();
+    return (
+        <button
+            type="button"
+            className="btn btn--small"
+            disabled={count === 0}
+            title={t('manga.ext.library.hint', { count })}
+            aria-label={`${t('manga.ext.library.hint', { count })}: ${extension.name}`}
+            data-testid="manga-extension-library-count"
+            onClick={() => {
+                onOpen(extension);
+            }}
+        >
+            {count}
+        </button>
+    );
+}
 
 export function MangaExtensions() {
     const t = useTranslator();
@@ -34,6 +62,23 @@ export function MangaExtensions() {
     const showAdult = useAppStore((state) => {
         return state.settings.mangaShowAdult;
     });
+    const sources = useMangaStore((state) => {
+        return state.browse.sources;
+    });
+    const sourcesStatus = useMangaStore((state) => {
+        return state.browse.sourcesStatus;
+    });
+    const loadSources = useMangaStore((state) => {
+        return state.loadSources;
+    });
+    const openLibraryManga = useMangaStore((state) => {
+        return state.openLibraryManga;
+    });
+    const library = useShownLibrary();
+    const mangasByExtension = useMemo(() => {
+        return libraryByExtension(library, sources);
+    }, [library, sources]);
+    const [libraryOf, setLibraryOf] = useState<MangaExtension | null>(null);
     const { stores, status, error, busy, filter } = extensions;
 
     useEffect(() => {
@@ -41,6 +86,13 @@ export function MangaExtensions() {
             void loadExtensions(false);
         }
     }, [status, loadExtensions]);
+
+    const hasLibrary = library.length > 0;
+    useEffect(() => {
+        if (hasLibrary && sourcesStatus === 'idle' && useMangaStore.getState().browse.sourcesStatus === 'idle') {
+            void loadSources();
+        }
+    }, [hasLibrary, sourcesStatus, loadSources]);
 
     const listedExtensions = extensions.extensions.filter((extension) => {
         return isListed(extension.contentWarning, showAdult);
@@ -139,7 +191,16 @@ export function MangaExtensions() {
                                         </span>
                                     )}
                                     {extension.isObsolete && <span className="badge badge--cancelled">{t('manga.ext.obsolete')}</span>}
-                                    {extension.isInstalled && <span className="badge badge--done">{t('manga.ext.installed')}</span>}
+                                    {extension.isInstalled && (
+                                        <>
+                                            <LibraryCountButton
+                                                extension={extension}
+                                                count={mangasByExtension.get(extension.pkgName)?.length ?? 0}
+                                                onOpen={setLibraryOf}
+                                            />
+                                            <span className="badge badge--done">{t('manga.ext.installed')}</span>
+                                        </>
+                                    )}
                                     <span className="anime__actions">
                                         {!extension.isInstalled && extension.isCompatible && (
                                             <button
@@ -186,6 +247,19 @@ export function MangaExtensions() {
                         }} />
                     </ul>
                 </>
+            )}
+            {libraryOf !== null && (
+                <MangaExtensionLibraryDialog
+                    extensionName={libraryOf.name}
+                    mangas={mangasByExtension.get(libraryOf.pkgName) ?? []}
+                    onOpen={(mangaId) => {
+                        setLibraryOf(null);
+                        void openLibraryManga(mangaId);
+                    }}
+                    onClose={() => {
+                        setLibraryOf(null);
+                    }}
+                />
             )}
         </section>
     );

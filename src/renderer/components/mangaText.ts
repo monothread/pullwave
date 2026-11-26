@@ -213,6 +213,29 @@ export function sourceLabelsOf(sources: readonly MangaSource[], mangas: readonly
     return [...new Set(labels)];
 }
 
+export function libraryByExtension(library: readonly LibraryManga[], sources: readonly MangaSource[]): Map<string, LibraryManga[]> {
+    const extensionOfSource = new Map<string, string>();
+    sources.forEach((source) => {
+        if (source.extensionPkg !== null) {
+            extensionOfSource.set(source.id, source.extensionPkg);
+        }
+    });
+    const byExtension = new Map<string, LibraryManga[]>();
+    library.forEach((manga) => {
+        const pkgName = extensionOfSource.get(manga.sourceId);
+        if (pkgName === undefined) {
+            return;
+        }
+        const mangas = byExtension.get(pkgName);
+        if (mangas === undefined) {
+            byExtension.set(pkgName, [manga]);
+        } else {
+            mangas.push(manga);
+        }
+    });
+    return byExtension;
+}
+
 export function downloadedCount(manga: Pick<LibraryManga, 'chapters'>): number {
     return manga.chapters.filter((chapter) => {
         return chapter.status === 'done';

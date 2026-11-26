@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaExtensions } from '@renderer/components/MangaExtensions';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeExtension } from '../../helpers/mangaFixtures';
+import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaStatus, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
@@ -346,6 +346,153 @@ describe('MangaExtensions', () => {
             await screen.findByText('Alpha');
             expect(names()).toEqual(['Alpha', 'Beta']);
         });
+    });
+});
+
+describe('MangaExtensions: the mangas of each extension in the library', () => {
+    const SOURCES = [
+        makeSource({ id: '1', name: 'Alpha', lang: 'pt', extensionPkg: 'a.pt' }),
+        makeSource({ id: '2', name: 'Alpha', lang: 'en', extensionPkg: 'a.pt', contentWarning: 'NSFW' }),
+        makeSource({ id: '3', name: 'Beta', lang: 'en', extensionPkg: 'b.en' })
+    ];
+    const ONE_PIECE = makeLibraryManga([makeChapterRecord({ id: 1, mangaId: 1, status: 'done' }), makeChapterRecord({ id: 2, mangaId: 1, remoteId: 12, status: 'idle' })], { id: 1, sourceId: '1', remoteId: 7, title: 'One Piece' });
+    const BLEACH = makeLibraryManga([], { id: 2, sourceId: '2', remoteId: 8, title: 'Bleach', thumbnailUrl: null });
+    const NARUTO = makeLibraryManga([], { id: 3, sourceId: '9', remoteId: 9, title: 'Naruto' });
+
+    beforeEach(() => {
+        mock.api.manga.sources.mockResolvedValue({ ok: true, value: SOURCES });
+        useMangaStore.setState({ library: [ONE_PIECE, BLEACH, NARUTO], view: 'extensions' });
+    });
+
+    function rowOf(name: string): HTMLElement {
+        const row = screen.getAllByTestId('manga-extension').find((candidate) => {
+            return candidate.querySelector('.history__title')?.textContent === name;
+        });
+        if (row === undefined) {
+            throw new Error(`No row for ${name}`);
+        }
+        return row;
+    }
+
+    async function openAlpha(): Promise<HTMLElement> {
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        const count = await screen.findByRole('button', { name: '2 manga(s) in the library: Alpha' });
+        await userEvent.click(count);
+        return screen.getByRole('dialog', { name: 'Manga of Alpha in the library' });
+    }
+
+    function cardTitles(dialog: HTMLElement): string[] {
+        return within(dialog)
+            .getAllByRole('heading', { level: 3 })
+            .map((heading) => {
+                return heading.textContent ?? '';
+            });
+    }
+
+    it('reads the sources to know the extension of each manga', async () => {
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        await waitFor(() => {
+            expect(mock.api.manga.sources).toHaveBeenCalledTimes(1);
+        });
+        expect(useMangaStore.getState().browse.sources).toEqual(SOURCES);
+    });
+
+    it.each([
+        ['on', true],
+        ['off', false]
+    ])('reads the sources and the stores only once with the adult content %s and the server running', async (_label, showAdult) => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: showAdult, mangaLanguage: 'all-languages' } });
+        useMangaStore.setState({ status: makeMangaStatus() });
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        await screen.findByRole('button', { name: `${showAdult ? 2 : 1} manga(s) in the library: Alpha` });
+        expect(mock.api.manga.sources).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.stores).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not read the sources when the library is empty, as every count would be 0', async () => {
+        useMangaStore.setState({ library: [] });
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        expect(mock.api.manga.sources).not.toHaveBeenCalled();
+        expect(mock.api.manga.stores).toHaveBeenCalledTimes(1);
+        expect(within(rowOf('Alpha')).getByTestId('manga-extension-library-count')).toHaveTextContent('0');
+    });
+
+    it('shows on the left of INSTALLED how many mangas of the extension the library has, joining all its languages, and 0 disabled when none', async () => {
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        const alpha = await screen.findByRole('button', { name: '2 manga(s) in the library: Alpha' });
+        expect(alpha).toHaveTextContent('2');
+        expect(alpha).toBeEnabled();
+        expect(alpha).toHaveAttribute('title', '2 manga(s) in the library');
+        expect(alpha).toHaveClass('btn', 'btn--small');
+        const installed = within(rowOf('Alpha')).getByText('INSTALLED');
+        expect(alpha.nextElementSibling).toBe(installed);
+        const beta = within(rowOf('Beta')).getByTestId('manga-extension-library-count');
+        expect(beta).toHaveTextContent('0');
+        expect(beta).toBeDisabled();
+        expect(beta).toHaveAccessibleName('0 manga(s) in the library: Beta');
+        expect(beta.nextElementSibling).toBe(within(rowOf('Beta')).getByText('INSTALLED'));
+    });
+
+    it('shows no count for an extension that is not installed', async () => {
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        expect(within(rowOf('Delta')).queryByTestId('manga-extension-library-count')).not.toBeInTheDocument();
+        expect(within(rowOf('Gamma')).queryByTestId('manga-extension-library-count')).not.toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-extension-library-count')).toHaveLength(2);
+    });
+
+    it('does not count the mangas of a source hidden while the adult content is off', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: false, mangaLanguage: 'all-languages' } });
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        const alpha = await screen.findByRole('button', { name: '1 manga(s) in the library: Alpha' });
+        await userEvent.click(alpha);
+        expect(cardTitles(screen.getByRole('dialog', { name: 'Manga of Alpha in the library' }))).toEqual(['One Piece']);
+    });
+
+    it('opens a window with the cards of the mangas of the extension, as in the library', async () => {
+        const dialog = await openAlpha();
+        expect(cardTitles(dialog)).toEqual(['One Piece', 'Bleach']);
+        const [onePiece, bleach] = within(dialog).getAllByTestId('manga-entry');
+        expect(within(onePiece!).getByText('1 of 2 downloaded')).toBeInTheDocument();
+        expect(within(onePiece!).getByTestId('manga-source-name')).toHaveTextContent('Alpha · PT');
+        expect(within(bleach!).getByText('0 of 0 downloaded')).toBeInTheDocument();
+        expect(within(bleach!).getByTestId('manga-source-name')).toHaveTextContent('Alpha · EN');
+        expect(within(dialog).queryByRole('button', { name: /^REMOVE/ })).not.toBeInTheDocument();
+    });
+
+    it('takes the user to the page of the manga in the library when its card is clicked, closing the window', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: { code: 'REQUEST_FAILED', message: 'offline' } });
+        const dialog = await openAlpha();
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Open: Bleach' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(useMangaStore.getState().view).toBe('library');
+        });
+        expect(useMangaStore.getState().selectionFrom).toBe('library');
+        expect(useMangaStore.getState().selection?.manga).toEqual({ remoteId: 8, sourceId: '2', title: 'Bleach', thumbnailUrl: null });
+        expect(mock.api.manga.details.mock.calls).toEqual([[8]]);
+    });
+
+    it('closes the window with CLOSE, with Escape and with a click outside it, leaving the user on the extensions', async () => {
+        await userEvent.click(within(await openAlpha()).getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: '2 manga(s) in the library: Alpha' }));
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: '2 manga(s) in the library: Alpha' }));
+        const backdrop = screen.getByRole('dialog').parentElement!;
+        fireEvent.mouseDown(backdrop);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(useMangaStore.getState().view).toBe('extensions');
+        expect(mock.api.manga.details).not.toHaveBeenCalled();
     });
 });
 

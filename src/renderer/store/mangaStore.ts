@@ -223,6 +223,7 @@ interface MangaState {
     clearReading: () => Promise<void>;
     openFromHistory: (entry: ReadingEntry) => Promise<void>;
     openFromUpdate: (entry: MangaUpdateEntry) => Promise<void>;
+    openLibraryManga: (mangaId: number) => Promise<void>;
     recordReading: (record: ReadingRecord) => Promise<void>;
     checkToolUpdates: () => Promise<void>;
     updateHelper: () => Promise<void>;
@@ -699,8 +700,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         openFromUpdate: async (entry) => {
+            await get().openLibraryManga(entry.mangaId);
+        },
+
+        openLibraryManga: async (mangaId) => {
             const saved = get().library.find((manga) => {
-                return manga.id === entry.mangaId;
+                return manga.id === mangaId;
             });
             if (saved === undefined) {
                 return;

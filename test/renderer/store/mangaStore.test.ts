@@ -2364,6 +2364,27 @@ describe('mangaStore the list of new chapters', () => {
         expect(mock.api.manga.details).not.toHaveBeenCalled();
     });
 
+    it('opens a manga of the library on its page by its id, from any screen, and asks the source for what is new', async () => {
+        const manga = makeLibraryManga([], { id: 9, remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: 'pullwave-manga://cover/9?v=abc' });
+        const other = makeLibraryManga([], { id: 4, remoteId: 8, title: 'Bleach' });
+        useMangaStore.setState({ library: [other, manga], view: 'extensions', librarySeries: 'series-x' });
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openLibraryManga(9);
+        expect(state().view).toBe('library');
+        expect(state().librarySeries).toBeNull();
+        expect(state().selectionFrom).toBe('library');
+        expect(state().selection).toMatchObject({ manga: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: 'pullwave-manga://cover/9?v=abc' }, status: 'ready' });
+        expect(mock.api.manga.details.mock.calls).toEqual([[7]]);
+    });
+
+    it('does nothing for an id that is no longer in the library', async () => {
+        useMangaStore.setState({ library: [makeLibraryManga([], { id: 4 })], view: 'extensions' });
+        await state().openLibraryManga(9);
+        expect(state().view).toBe('extensions');
+        expect(state().selection).toBeNull();
+        expect(mock.api.manga.details).not.toHaveBeenCalled();
+    });
+
     it('reads the list again when the library changes and the screen is the list', async () => {
         mock.api.manga.status.mockResolvedValue(makeMangaStatus());
         await state().init();

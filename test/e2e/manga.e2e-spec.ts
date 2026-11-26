@@ -4247,6 +4247,107 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(libraryOrder).toHaveValue('arrival');
     });
 
+    test('counts on each installed extension the mangas of the library, and opens a manga of it in the library from the window of its cards', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        const extension = session.page.getByTestId('manga-extension').filter({ hasText: 'Tachiyomi: Fake Dex' });
+        const count = extension.getByRole('button', { name: '0 manga(s) in the library: Tachiyomi: Fake Dex' });
+        await expect(count).toHaveText('0');
+        await expect(count).toBeDisabled();
+
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'EXTENSIONS');
+        const filled = extension.getByRole('button', { name: '2 manga(s) in the library: Tachiyomi: Fake Dex' });
+        await expect(filled).toHaveText('2');
+        await expect(filled).toBeEnabled();
+        await expect(filled).toHaveAttribute('title', '2 manga(s) in the library');
+        await expect(filled.locator('xpath=following-sibling::*[1]')).toHaveText('INSTALLED');
+
+        await filled.click();
+        const dialog = session.page.getByRole('dialog', { name: 'Manga of Tachiyomi: Fake Dex in the library' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByTestId('manga-entry').getByRole('heading', { level: 3 })).toHaveText(['Bleach', 'One Piece']);
+        await expect(dialog.getByTestId('manga-entry').first().getByText('0 of 2 downloaded')).toBeVisible();
+        await expect(dialog.getByTestId('manga-source-name').first()).toHaveText('Fake Dex · EN');
+        await dialog.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(dialog).toHaveCount(0);
+
+        await filled.click();
+        await session.page.keyboard.press('Escape');
+        await expect(dialog).toHaveCount(0);
+
+        await filled.click();
+        await dialog.getByRole('button', { name: 'Open: Bleach' }).click();
+        await expect(dialog).toHaveCount(0);
+        await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
+        const page = session.page.getByRole('region', { name: 'Bleach' });
+        await expect(page.getByRole('heading', { level: 2 })).toHaveText('Bleach');
+        await expect(page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
+        await page.getByRole('button', { name: '← BACK', exact: true }).click();
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { level: 3 })).toHaveText(['Bleach', 'One Piece']);
+    });
+
+    test('makes the window of the mangas of an extension as wide as the app, with more columns on wider screens and no sideways scroll, even with the edge card under the mouse', async () => {
+        fake.pagedList = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        for (let id = 100; id < 112; id += 1) {
+            await session.page.getByRole('button', { name: `Open: Title ${id}`, exact: true }).click();
+            await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+            await expect(session.page.getByRole('button', { name: 'GO TO LIBRARY' })).toBeVisible();
+            await session.page.getByRole('button', { name: '← BACK' }).click();
+        }
+        await goTo(session.page, 'EXTENSIONS');
+        const count = session.page.getByRole('button', { name: '12 manga(s) in the library: Tachiyomi: Fake Dex' });
+        const dialog = session.page.getByRole('dialog', { name: 'Manga of Tachiyomi: Fake Dex in the library' });
+
+        const sizes = [
+            { width: 700, height: 600, modalWidth: 668, columns: 4 },
+            { width: 1100, height: 780, modalWidth: 1000, columns: 4 },
+            { width: 1920, height: 1080, modalWidth: 1400, columns: 7 },
+            { width: 3440, height: 1440, modalWidth: 2880, columns: 12 }
+        ];
+        for (const size of sizes) {
+            await session.page.setViewportSize({ width: size.width, height: size.height });
+            await count.click();
+            await expect(dialog.getByTestId('manga-entry')).toHaveCount(12);
+            await expect(dialog.getByRole('button', { name: 'Open: Bleach' }).first()).toBeFocused();
+            const edgeCover = await session.page.evaluate((columns) => {
+                const cards = Array.from(document.querySelectorAll('.modal__grid .cover-card'));
+                const box = cards[columns - 1]!.querySelector('.cover')!.getBoundingClientRect();
+                return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+            }, size.columns);
+            await session.page.mouse.move(edgeCover.x, edgeCover.y);
+            await expect
+                .poll(async () => {
+                    return session.page.evaluate(() => {
+                        const modal = document.querySelector('.modal')!;
+                        const grid = document.querySelector('.modal__grid')!;
+                        const firstRowTop = grid.querySelector('.cover-card')!.getBoundingClientRect().top;
+                        return {
+                            modalWidth: Math.round(modal.getBoundingClientRect().width),
+                            modalSideways: modal.scrollWidth - modal.clientWidth,
+                            gridSideways: grid.scrollWidth - grid.clientWidth,
+                            columns: Array.from(grid.querySelectorAll('.cover-card')).filter((card) => {
+                                return Math.abs(card.getBoundingClientRect().top - firstRowTop) < 2;
+                            }).length
+                        };
+                    });
+                })
+                .toEqual({ modalWidth: size.modalWidth, modalSideways: 0, gridSideways: 0, columns: size.columns });
+            await session.page.keyboard.press('Escape');
+            await expect(dialog).toHaveCount(0);
+        }
+    });
+
     test('keeps the order of the library for each tab of groups, even after the app is closed and opened again', async () => {
         session = await launch();
         await openManga(session.page);

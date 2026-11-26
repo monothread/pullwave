@@ -107,18 +107,17 @@ function useSourceLabels(mangas: readonly LibraryManga[]): string[] {
     return sourceLabelsOf(sources, mangas);
 }
 
-function MangaRow({ manga }: MangaRowProps) {
+interface MangaEntryCardProps {
+    manga: LibraryManga;
+    onOpen: () => void;
+    actions?: ReactNode;
+}
+
+export function MangaEntryCard({ manga, onOpen, actions }: MangaEntryCardProps) {
     const t = useTranslator();
     const timeZone = useAppTimeZone();
     const sourceMissing = useSourceMissing([manga]);
     const sourceLabels = useSourceLabels([manga]);
-    const removeManga = useMangaStore((state) => {
-        return state.removeManga;
-    });
-    const openManga = useMangaStore((state) => {
-        return state.openManga;
-    });
-
     return (
         <MangaCard
             testId="manga-entry"
@@ -130,6 +129,24 @@ function MangaRow({ manga }: MangaRowProps) {
             newChapters={newChapterCount([manga], undefined, timeZone)}
             sourceMissing={sourceMissing}
             sourceLabels={sourceLabels}
+            onOpen={onOpen}
+            actions={actions}
+        />
+    );
+}
+
+function MangaRow({ manga }: MangaRowProps) {
+    const t = useTranslator();
+    const removeManga = useMangaStore((state) => {
+        return state.removeManga;
+    });
+    const openManga = useMangaStore((state) => {
+        return state.openManga;
+    });
+
+    return (
+        <MangaEntryCard
+            manga={manga}
             onOpen={() => {
                 void openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
             }}
