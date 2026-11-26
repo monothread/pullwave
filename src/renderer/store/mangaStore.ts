@@ -388,6 +388,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
         });
     }
 
+    let extensionMutationVersion = 0;
+
     function patchExtensions(patch: Partial<MangaExtensionsState>): void {
         set((state) => {
             return { extensions: { ...state.extensions, ...patch } };
@@ -545,6 +547,34 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
             const [library, jobs, groups, queueHeld, checkState] = await Promise.all([api.library(), api.jobs(), api.groups(), api.queueHeld(), api.checkState()]);
             set({ library, jobs, groups, queueHeld, checkState });
+            let active = true;
+            let extensionsChecked = false;
+            const refreshInstalledExtensionsOnStart = async (): Promise<void> => {
+                if (extensionsChecked || !active || get().status.server !== 'running') {
+                    return;
+                }
+                extensionsChecked = true;
+                const revisionAtStart = extensionMutationVersion;
+                try {
+                    const current = await api.extensions(false);
+                    if (!active || !current.ok || revisionAtStart !== extensionMutationVersion) {
+                        return;
+                    }
+                    const hasInstalled = current.value.some((extension) => {
+                        return extension.isInstalled;
+                    });
+                    if (!hasInstalled) {
+                        return;
+                    }
+                    const [stores, refreshed] = await Promise.all([api.stores(), api.extensions(true)]);
+                    if (!active || revisionAtStart !== extensionMutationVersion || !stores.ok || !refreshed.ok) {
+                        return;
+                    }
+                    patchExtensions({ status: 'ready', error: null, stores: stores.value, extensions: refreshed.value });
+                } catch {
+                    return;
+                }
+            };
             const unsubscribers = [
                 api.onToolState((tool) => {
                     set((state) => {
@@ -560,6 +590,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     });
                     if (server === 'running') {
                         void get().refreshLibrary();
+                        void refreshInstalledExtensionsOnStart();
                     }
                     if (server === 'error') {
                         void get().refreshStatus();
@@ -623,7 +654,11 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 })
             ];
             await get().refreshStatus();
+            if (get().status.server === 'running') {
+                void refreshInstalledExtensionsOnStart();
+            }
             return (): void => {
+                active = false;
                 unsubscribers.forEach((unsubscribe) => {
                     unsubscribe();
                 });
@@ -1573,6 +1608,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         loadExtensions: async (refresh = false) => {
+            if (refresh) {
+                extensionMutationVersion += 1;
+            }
             patchExtensions({ status: 'loading', error: null });
             const stores = await window.api.manga.stores();
             if (!stores.ok) {
@@ -1589,6 +1627,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         addStore: async (indexUrl) => {
+            extensionMutationVersion += 1;
             setBusy(indexUrl, true);
             const result = await window.api.manga.addStore(indexUrl);
             setBusy(indexUrl, false);
@@ -1601,6 +1640,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         removeStore: async (indexUrl) => {
+            extensionMutationVersion += 1;
             setBusy(indexUrl, true);
             const result = await window.api.manga.removeStore(indexUrl);
             setBusy(indexUrl, false);
@@ -1612,6 +1652,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         changeExtension: async (pkgName, action) => {
+            extensionMutationVersion += 1;
             setBusy(pkgName, true);
             const result = await window.api.manga.changeExtension(pkgName, action);
             setBusy(pkgName, false);
@@ -1625,6 +1666,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         updateAllExtensions: async () => {
+            extensionMutationVersion += 1;
             setBusy(UPDATE_ALL_KEY, true);
             const result = await window.api.manga.updateAllExtensions();
             setBusy(UPDATE_ALL_KEY, false);

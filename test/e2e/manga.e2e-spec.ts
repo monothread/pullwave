@@ -42,6 +42,7 @@ class FakeSuwayomi {
     failTimes = new Map<string, number>();
     adult = false;
     hasUpdate = false;
+    updateAfterRefresh = false;
     otherSource = false;
     otherSourceFirst = false;
     otherChapters = [1, 2, 3];
@@ -127,6 +128,9 @@ class FakeSuwayomi {
             return { extensionStores: { nodes: this.stores } };
         }
         if (query.includes('fetchExtensions')) {
+            if (this.updateAfterRefresh) {
+                this.hasUpdate = true;
+            }
             return { fetchExtensions: { extensions: this.stores.length > 0 ? [this.extension()] : [] } };
         }
         if (query.includes('updateExtensions')) {
@@ -643,6 +647,25 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'REFRESH LIST' }).click();
         await expect(session.page.getByText('INCOMPATIBLE')).toHaveAttribute('title', 'Made for version 1.2 of the extension library, which the server does not support.');
         await expect(session.page.getByRole('button', { name: 'UNINSTALL: Tachiyomi: Fake Dex' })).toBeVisible();
+    });
+
+    test('refreshes installed extensions on startup so updates are already ready to click', async () => {
+        fake.stores = [{ name: 'Fake Store', indexUrl: STORE_URL }];
+        fake.installed = true;
+        fake.updateAfterRefresh = true;
+        session = await launch();
+        await expect.poll(() => {
+            return fake.graphqlRequests('fetchExtensions').length;
+        }).toBe(1);
+        await openManga(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        await expect(session.page.getByRole('button', { name: 'UPDATE ALL (1)' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'UPDATE: Tachiyomi: Fake Dex' })).toBeVisible();
+        await session.page.getByRole('button', { name: 'UPDATE ALL (1)' }).click();
+        await expect(session.page.getByRole('button', { name: /UPDATE ALL/ })).toHaveCount(0);
+        const updates = fake.graphqlRequests('updateExtensions(');
+        expect(updates).toHaveLength(1);
+        expect(updates[0]?.variables).toEqual({ ids: [EXTENSION_PKG] });
     });
 
     test('says which store a source comes from', async () => {

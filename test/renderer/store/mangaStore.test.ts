@@ -80,7 +80,208 @@ describe('mangaStore init', () => {
         mock.api.manga.status.mockResolvedValueOnce(makeMangaStatus({ server: 'stopped' })).mockResolvedValueOnce(makeMangaStatus({ server: 'starting' }));
         const unsubscribe = await state().init();
         expect(state().status).toEqual(makeMangaStatus({ server: 'starting' }));
+        expect(mock.api.manga.extensions).not.toHaveBeenCalled();
         unsubscribe();
+    });
+
+    describe('refreshing installed extensions on start', () => {
+        const STORE = { indexUrl: 'https://store.example/index.min.json', name: 'Store' };
+        const INSTALLED = makeExtension({ pkgName: 'a.en', name: 'Alpha', isInstalled: true, hasUpdate: false });
+        const UPDATED = makeExtension({ pkgName: 'a.en', name: 'Alpha', isInstalled: true, hasUpdate: true });
+        const AVAILABLE = makeExtension({ pkgName: 'b.en', name: 'Beta', isInstalled: false, hasUpdate: false });
+
+        it('refreshes installed extensions once the library is loaded and the server is running', async () => {
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'running' }));
+            mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
+            mock.api.manga.extensions
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED, AVAILABLE] })
+                .mockResolvedValueOnce({ ok: true, value: [UPDATED, AVAILABLE] });
+            const unsubscribe = await state().init();
+            await vi.waitFor(() => {
+                expect(state().extensions).toEqual({
+                    stores: [STORE],
+                    extensions: [UPDATED, AVAILABLE],
+                    status: 'ready',
+                    error: null,
+                    busy: [],
+                    filter: { query: '', onlyInstalled: true }
+                });
+            });
+            expect(mock.api.manga.extensions.mock.calls).toEqual([[false], [true]]);
+            expect(mock.api.manga.stores).toHaveBeenCalledTimes(1);
+            unsubscribe();
+        });
+
+        it('waits until the server starts before checking extensions, and checks only once per session', async () => {
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'stopped' }));
+            mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
+            mock.api.manga.extensions
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED] })
+                .mockResolvedValueOnce({ ok: true, value: [UPDATED] });
+            const unsubscribe = await state().init();
+            expect(mock.api.manga.extensions).not.toHaveBeenCalled();
+
+            mock.emitMangaServer('starting');
+            expect(mock.api.manga.extensions).not.toHaveBeenCalled();
+
+            mock.emitMangaServer('running');
+            await vi.waitFor(() => {
+                expect(state().extensions.extensions).toEqual([UPDATED]);
+            });
+            expect(mock.api.manga.extensions.mock.calls).toEqual([[false], [true]]);
+
+            mock.emitMangaServer('running');
+            await Promise.resolve();
+            expect(mock.api.manga.extensions.mock.calls).toEqual([[false], [true]]);
+            unsubscribe();
+        });
+
+        it('does not refresh or read stores when no extension is installed', async () => {
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'running' }));
+            mock.api.manga.extensions.mockResolvedValue({ ok: true, value: [AVAILABLE] });
+            const unsubscribe = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(1);
+            });
+            expect(mock.api.manga.extensions).toHaveBeenCalledWith(false);
+            expect(mock.api.manga.stores).not.toHaveBeenCalled();
+            expect(state().extensions).toEqual({
+                stores: [],
+                extensions: [],
+                status: 'idle',
+                error: null,
+                busy: [],
+                filter: { query: '', onlyInstalled: true }
+            });
+            unsubscribe();
+        });
+
+        it('leaves the extension state untouched when the initial lookup, refresh, stores or promise fails', async () => {
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'running' }));
+            mock.api.manga.extensions.mockResolvedValueOnce({ ok: false, error: FAILURE });
+            const first = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(1);
+            });
+            expect(state().extensions).toMatchObject({ status: 'idle', error: null, extensions: [], stores: [] });
+            first();
+
+            mock.api.manga.extensions.mockReset();
+            mock.api.manga.stores.mockReset();
+            mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
+            mock.api.manga.extensions
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED] })
+                .mockResolvedValueOnce({ ok: false, error: FAILURE });
+            const second = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(2);
+            });
+            expect(state().extensions).toMatchObject({ status: 'idle', error: null, extensions: [], stores: [] });
+            second();
+
+            mock.api.manga.extensions.mockReset();
+            mock.api.manga.stores.mockReset();
+            mock.api.manga.stores.mockResolvedValue({ ok: false, error: FAILURE });
+            mock.api.manga.extensions
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED] })
+                .mockResolvedValueOnce({ ok: true, value: [UPDATED] });
+            const third = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(2);
+            });
+            expect(state().extensions).toMatchObject({ status: 'idle', error: null, extensions: [], stores: [] });
+            third();
+
+            mock.api.manga.extensions.mockReset();
+            mock.api.manga.extensions.mockRejectedValueOnce(new Error('offline'));
+            const fourth = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(1);
+            });
+            expect(state().extensions).toMatchObject({ status: 'idle', error: null, extensions: [], stores: [] });
+            fourth();
+        });
+
+        it('does not overwrite extension state when the user refreshes manually while startup refresh is in flight', async () => {
+            let resolveStartupRefresh: (value: { ok: true; value: typeof UPDATED[] }) => void = () => {
+                return undefined;
+            };
+            const MANUAL = makeExtension({ pkgName: 'c.en', name: 'Gamma', isInstalled: true, hasUpdate: false });
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'running' }));
+            mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
+            mock.api.manga.extensions
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED] })
+                .mockReturnValueOnce(
+                    new Promise((resolve) => {
+                        resolveStartupRefresh = resolve;
+                    })
+                )
+                .mockResolvedValueOnce({ ok: true, value: [MANUAL] });
+            const unsubscribe = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(2);
+            });
+            await state().loadExtensions(true);
+            expect(state().extensions.extensions).toEqual([MANUAL]);
+
+            resolveStartupRefresh({ ok: true, value: [UPDATED] });
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(state().extensions.extensions).toEqual([MANUAL]);
+            unsubscribe();
+        });
+
+        it('skips the remote refresh when a manual extension action happens during the initial lookup', async () => {
+            let resolveLookup: (value: { ok: true; value: typeof INSTALLED[] }) => void = () => {
+                return undefined;
+            };
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'running' }));
+            mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
+            mock.api.manga.extensions
+                .mockReturnValueOnce(
+                    new Promise((resolve) => {
+                        resolveLookup = resolve;
+                    })
+                )
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED] });
+            const unsubscribe = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(1);
+            });
+            await state().changeExtension(INSTALLED.pkgName, 'update');
+            expect(mock.api.manga.extensions.mock.calls).toEqual([[false], [false]]);
+
+            resolveLookup({ ok: true, value: [INSTALLED] });
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(mock.api.manga.extensions.mock.calls).toEqual([[false], [false]]);
+            unsubscribe();
+        });
+
+        it('does not update extension state after unsubscribe', async () => {
+            let resolveStartupRefresh: (value: { ok: true; value: typeof UPDATED[] }) => void = () => {
+                return undefined;
+            };
+            mock.api.manga.status.mockResolvedValue(makeMangaStatus({ server: 'running' }));
+            mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
+            mock.api.manga.extensions
+                .mockResolvedValueOnce({ ok: true, value: [INSTALLED] })
+                .mockReturnValueOnce(
+                    new Promise((resolve) => {
+                        resolveStartupRefresh = resolve;
+                    })
+                );
+            const unsubscribe = await state().init();
+            await vi.waitFor(() => {
+                expect(mock.api.manga.extensions).toHaveBeenCalledTimes(2);
+            });
+            unsubscribe();
+
+            resolveStartupRefresh({ ok: true, value: [UPDATED] });
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(state().extensions).toMatchObject({ status: 'idle', extensions: [], stores: [] });
+        });
     });
 
     describe('events', () => {
