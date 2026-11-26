@@ -2,6 +2,7 @@
 import { act, renderHook } from '@testing-library/react';
 import type { AnimeSearchResult } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
+import type { ExplorerListResponse } from '@shared/explorer';
 import { MOUSE_BACK_BUTTON, MOUSE_FORWARD_BUTTON, snapshotKey, useMouseNavigation, type MangaPage, type NavigationSnapshot } from '@renderer/hooks/useMouseNavigation';
 import { batchNavigation } from '@renderer/navigation/navigationBatch';
 import { INITIAL_SEARCH, useAnimeStore, type AnimeSelection } from '@renderer/store/animeStore';
@@ -578,6 +579,159 @@ describe('useMouseNavigation', () => {
         expect(useExplorerStore.getState().playing).toEqual(playing);
         act(() => {
             useExplorerStore.setState({ playing: null });
+        });
+    });
+
+    describe('in the explorer', () => {
+        function listingOf(directory: string): ExplorerListResponse {
+            return {
+                ok: true,
+                listing: {
+                    directory,
+                    parent: directory === '/downloads' ? null : '/downloads',
+                    breadcrumbs: [{ name: directory, path: directory }],
+                    roots: [{ id: 'downloads', label: 'Downloads', path: '/downloads', kind: 'downloads' }],
+                    entries: []
+                }
+            };
+        }
+
+        it('goes back and forward through visited folders, and leaves the explorer once at the start of its folder history', async () => {
+            mock.api.explorer.list.mockImplementation(async (directory?: string) => {
+                return listingOf(directory ?? '/downloads');
+            });
+            mount();
+            setDownloadsView('history');
+            act(() => {
+                useAppStore.getState().setDownloadsView('explorer');
+            });
+            await act(async () => {
+                await useExplorerStore.getState().open('/downloads');
+                await useExplorerStore.getState().open('/downloads/sub1');
+                await useExplorerStore.getState().open('/downloads/sub1/sub2');
+            });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1/sub2', history: ['/downloads', '/downloads/sub1', '/downloads/sub1/sub2'], historyIndex: 2 });
+
+            await act(async () => {
+                press(MOUSE_BACK_BUTTON);
+            });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1 });
+            expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'explorer' });
+
+            await act(async () => {
+                press(MOUSE_BACK_BUTTON);
+            });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads', historyIndex: 0 });
+            expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'explorer' });
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'history' });
+
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'explorer' });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads', historyIndex: 0 });
+
+            await act(async () => {
+                press(MOUSE_FORWARD_BUTTON);
+            });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1 });
+
+            await act(async () => {
+                press(MOUSE_FORWARD_BUTTON);
+            });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1/sub2', historyIndex: 2 });
+        });
+
+        it('falls through to global forward navigation once at the end of explorer folder history', async () => {
+            mock.api.explorer.list.mockImplementation(async (directory?: string) => {
+                return listingOf(directory ?? '/downloads');
+            });
+            mount();
+            act(() => {
+                useAppStore.getState().setDownloadsView('explorer');
+            });
+            await act(async () => {
+                await useExplorerStore.getState().open('/downloads');
+                await useExplorerStore.getState().open('/downloads/sub1');
+            });
+            setTab('settings');
+            press(MOUSE_BACK_BUTTON);
+            expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'explorer' });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1 });
+
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useAppStore.getState().tab).toBe('settings');
+        });
+
+        it('does not touch explorer folder history when another section or downloads view is active', async () => {
+            mock.api.explorer.list.mockImplementation(async (directory?: string) => {
+                return listingOf(directory ?? '/downloads');
+            });
+            mount();
+            act(() => {
+                useAppStore.getState().setDownloadsView('explorer');
+            });
+            await act(async () => {
+                await useExplorerStore.getState().open('/downloads');
+                await useExplorerStore.getState().open('/downloads/sub1');
+            });
+            setDownloadsView('history');
+            setTab('settings');
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'history' });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1 });
+
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useAppStore.getState().tab).toBe('settings');
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1 });
+        });
+
+        it('closes the explorer player before stepping back in folder history, and does not step forward while playing', async () => {
+            const playing = {
+                entry: {
+                    path: '/downloads/sub1/clip.mp4',
+                    name: 'clip.mp4',
+                    kind: 'video' as const,
+                    extension: '.mp4',
+                    sizeBytes: 1024,
+                    modifiedAt: 1000,
+                    token: 1,
+                    thumbnailUrl: 'pullwave-explorer://thumbnail/1',
+                    mediaUrl: 'pullwave-explorer://media/1'
+                },
+                status: 'ready' as const,
+                url: 'pullwave-explorer://media/1',
+                converted: false,
+                error: null
+            };
+            mock.api.explorer.list.mockImplementation(async (directory?: string) => {
+                return listingOf(directory ?? '/downloads');
+            });
+            mount();
+            act(() => {
+                useAppStore.getState().setDownloadsView('explorer');
+            });
+            await act(async () => {
+                await useExplorerStore.getState().open('/downloads');
+                await useExplorerStore.getState().open('/downloads/sub1');
+                await useExplorerStore.getState().open('/downloads/sub2');
+                await useExplorerStore.getState().goBack();
+            });
+            act(() => {
+                useExplorerStore.setState({ playing });
+            });
+
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1, playing });
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads/sub1', historyIndex: 1, playing: null });
+
+            await act(async () => {
+                press(MOUSE_BACK_BUTTON);
+            });
+            expect(useExplorerStore.getState()).toMatchObject({ directory: '/downloads', historyIndex: 0 });
         });
     });
 

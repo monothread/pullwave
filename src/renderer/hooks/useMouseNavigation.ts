@@ -134,6 +134,30 @@ function isPlayerOpen(): boolean {
     );
 }
 
+function isExplorerVisible(): boolean {
+    const { tab, downloadsView } = useAppStore.getState();
+    return tab === 'downloads' && downloadsView === 'explorer';
+}
+
+function navigateExplorer(direction: 'back' | 'forward'): boolean {
+    if (!isExplorerVisible()) {
+        return false;
+    }
+    const explorer = useExplorerStore.getState();
+    if (direction === 'back') {
+        if (explorer.historyIndex > 0) {
+            void explorer.goBack();
+            return true;
+        }
+        return false;
+    }
+    if (explorer.historyIndex >= 0 && explorer.historyIndex < explorer.history.length - 1) {
+        void explorer.goForward();
+        return true;
+    }
+    return false;
+}
+
 function scrollArea(): HTMLElement | null {
     return document.querySelector<HTMLElement>('.app__main');
 }
@@ -188,14 +212,14 @@ export function useMouseNavigation(): void {
         const onMouseUp = (event: MouseEvent): void => {
             if (event.button === MOUSE_BACK_BUTTON) {
                 event.preventDefault();
-                if (!closePlayers()) {
+                if (!closePlayers() && !navigateExplorer('back')) {
                     go(() => {
                         return history.back();
                     });
                 }
             } else if (event.button === MOUSE_FORWARD_BUTTON) {
                 event.preventDefault();
-                if (!isPlayerOpen()) {
+                if (!isPlayerOpen() && !navigateExplorer('forward')) {
                     go(() => {
                         return history.forward();
                     });

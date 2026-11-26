@@ -163,3 +163,46 @@ test('shows only folders, videos with thumbnails, and audio files, plays media b
     await expect(page.getByRole('region', { name: 'Convert video to audio' })).toBeVisible();
     await expect(page.getByText('RenamedClip.mp4')).toBeVisible({ timeout: 20000 });
 });
+
+test('navigates folders back and forward with the mouse side buttons, and leaves explorer at the start of its history', async () => {
+    mkdirSync(join(mediaDir, 'Subfolder', 'Nested'), { recursive: true });
+    await launch();
+    await expect(page.getByRole('region', { name: 'Media explorer' })).toBeVisible();
+    await expect(page.getByText('Subfolder')).toBeVisible({ timeout: 20000 });
+
+    const pressMouseButton = async (button: 3 | 4): Promise<void> => {
+        await page.evaluate((mouseButton) => {
+            window.dispatchEvent(new MouseEvent('mouseup', { button: mouseButton, bubbles: true, cancelable: true }));
+        }, button);
+    };
+
+    await page.getByText('Subfolder').click();
+    await expect(page.getByText('Nested')).toBeVisible();
+    await page.getByText('Nested').click();
+    await expect(page.getByRole('button', { name: 'Nested', exact: true })).toBeVisible();
+
+    await pressMouseButton(3);
+    await expect(page.getByRole('region', { name: 'Media explorer' })).toBeVisible();
+    await expect(page.getByTestId('explorer-item-directory').filter({ hasText: 'Nested' })).toBeVisible();
+
+    await pressMouseButton(3);
+    await expect(page.getByTestId('explorer-item-directory').filter({ hasText: 'Subfolder' })).toBeVisible();
+    await expect(page.getByText('Clip.mp4')).toBeVisible();
+
+    await pressMouseButton(4);
+    await expect(page.getByTestId('explorer-item-directory').filter({ hasText: 'Nested' })).toBeVisible();
+
+    await pressMouseButton(4);
+    await expect(page.getByRole('button', { name: 'Nested', exact: true })).toBeVisible();
+
+    await pressMouseButton(3);
+    await expect(page.getByTestId('explorer-item-directory').filter({ hasText: 'Nested' })).toBeVisible();
+    await pressMouseButton(3);
+    await expect(page.getByTestId('explorer-item-directory').filter({ hasText: 'Subfolder' })).toBeVisible();
+
+    await pressMouseButton(3);
+    await expect(page.getByLabel('Link 1', { exact: true })).toBeVisible();
+
+    await pressMouseButton(4);
+    await expect(page.getByRole('region', { name: 'Media explorer' })).toBeVisible();
+});
