@@ -160,6 +160,8 @@ export const es: Messages = {
     'library.sort.recent': 'Añadidos recientemente',
     'library.sort.lastWatched': 'Vistos por última vez',
     'library.sort.lastRead': 'Leídos por última vez',
+    'library.sort.lastEpisode': 'Último episodio añadido',
+    'library.sort.lastChapter': 'Último capítulo añadido',
     'library.sort.az': 'A–Z',
     'library.sort.za': 'Z–A',
     'list.order.asc': 'Del primero al último',

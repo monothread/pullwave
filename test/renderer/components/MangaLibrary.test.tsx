@@ -753,6 +753,18 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
         expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
     });
 
+    it('shows first the manga whose chapter arrived last when asked, by any season of a series, whenever it was added', async () => {
+        const arrivedLater = makeLibraryManga([makeChapterRecord({ id: 3, mangaId: 3, addedAt: Date.now() - 60 * 60 * 1000 })], { id: 3, remoteId: 9, title: 'Epic 2', series: 'Epic', season: 2, createdAt: 1 });
+        useMangaStore.setState({ library: [SOLO, PART_ONE, arrivedLater] });
+        render(<MangaLibrary />);
+        expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'arrival');
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('arrival');
+        expect(screen.getByRole('option', { name: 'Last chapter added' })).toHaveProperty('selected', true);
+        expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
+        expect(useSortPrefsStore.getState().library.manga).toEqual({ all: { ...RECENT_EVERYWHERE, all: 'arrival' } });
+    });
+
     it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
         const { unmount } = render(<MangaLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');

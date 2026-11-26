@@ -158,6 +158,8 @@ export const en = {
     'library.sort.recent': 'Recently added',
     'library.sort.lastWatched': 'Last watched',
     'library.sort.lastRead': 'Last read',
+    'library.sort.lastEpisode': 'Last episode added',
+    'library.sort.lastChapter': 'Last chapter added',
     'library.sort.az': 'A–Z',
     'library.sort.za': 'Z–A',
     'list.order.asc': 'First to last',

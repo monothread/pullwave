@@ -19,7 +19,7 @@ import { ErrorNotice } from './ErrorNotice';
 import { LibraryCard } from '../library/LibraryCard';
 import { LibraryControls } from '../library/LibraryControls';
 import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
-import { animeGroupComplete, animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
+import { animeGroupComplete, animeLastArrival, animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
 import { animeListKey, inListOrder, useAnimeLibrarySort, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
 import { WatchedMark } from './WatchedMark';
@@ -843,7 +843,10 @@ export function AnimeLibrary() {
     const countOf = (counted: LibraryFilter): number => {
         return filterGroups(all, counted, newsOf, completeOf).length;
     };
-    const groups = sortGroups(filterGroups(all, filter, newsOf, completeOf), sort, lastSeenOf);
+    const lastArrivalOf = (group: LibraryGroup): number => {
+        return animeLastArrival(group.entries);
+    };
+    const groups = sortGroups(filterGroups(all, filter, newsOf, completeOf), sort, lastSeenOf, lastArrivalOf);
     const searching = search.trim().length > 0;
     return (
         <section className="queue library" aria-label={t('anime.library.aria')}>

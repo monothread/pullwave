@@ -13,7 +13,7 @@ import { MangaSeriesView } from './MangaSeriesView';
 import { LibraryCard } from '../library/LibraryCard';
 import { LibraryControls } from '../library/LibraryControls';
 import { MangaLibrarySpotlight } from '../library/LibrarySpotlights';
-import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
+import { filterGroups, mangaLastArrival, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
 import { useMangaLibrarySort } from '../store/sortPrefsStore';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 import { useAppTimeZone } from '../hooks/useAppTimeZone';
@@ -286,7 +286,10 @@ export function MangaLibrary() {
     const lastSeenOf = (group: MangaLibraryGroup): number => {
         return mangaLastSeen(group.entries, history);
     };
-    const cards = sortGroups(filterGroups(all, filter, newsOf), sort, lastSeenOf);
+    const lastArrivalOf = (group: MangaLibraryGroup): number => {
+        return mangaLastArrival(group.entries);
+    };
+    const cards = sortGroups(filterGroups(all, filter, newsOf), sort, lastSeenOf, lastArrivalOf);
     const searching = search.trim().length > 0;
     return (
         <section className="manga__library" aria-label={t('manga.nav.library')}>

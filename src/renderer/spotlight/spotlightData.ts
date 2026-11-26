@@ -138,9 +138,9 @@ export type LibraryFilter = 'all' | 'news' | 'complete' | 'ongoing';
 
 export const LIBRARY_FILTERS: readonly LibraryFilter[] = ['all', 'news', 'complete', 'ongoing'];
 
-export type LibrarySort = 'recent' | 'last' | 'az' | 'za';
+export type LibrarySort = 'recent' | 'last' | 'arrival' | 'az' | 'za';
 
-export const LIBRARY_SORTS: readonly LibrarySort[] = ['recent', 'last', 'az', 'za'];
+export const LIBRARY_SORTS: readonly LibrarySort[] = ['recent', 'last', 'arrival', 'az', 'za'];
 
 interface SortableGroup<T> {
     series: string;
@@ -157,7 +157,18 @@ function byName(first: { series: string }, second: { series: string }): number {
     return first.series.localeCompare(second.series, undefined, { sensitivity: 'base', numeric: true });
 }
 
-export function sortGroups<T extends { createdAt: number }, G extends SortableGroup<T>>(groups: readonly G[], sort: LibrarySort, lastSeen: (group: G) => number): G[] {
+function byLatestFirst<G>(groups: G[], latest: (group: G) => number, tieBreak: (first: G, second: G) => number): G[] {
+    const latestOf = new Map(
+        groups.map((group) => {
+            return [group, latest(group)];
+        })
+    );
+    return groups.sort((first, second) => {
+        return (latestOf.get(second) ?? 0) - (latestOf.get(first) ?? 0) || tieBreak(first, second);
+    });
+}
+
+export function sortGroups<T extends { createdAt: number }, G extends SortableGroup<T>>(groups: readonly G[], sort: LibrarySort, lastSeen: (group: G) => number, lastArrival: (group: G) => number): G[] {
     const sorted = [...groups];
     if (sort === 'az') {
         return sorted.sort(byName);
@@ -173,9 +184,25 @@ export function sortGroups<T extends { createdAt: number }, G extends SortableGr
     if (sort === 'recent') {
         return sorted.sort(byAdded);
     }
-    return sorted.sort((first, second) => {
-        return lastSeen(second) - lastSeen(first) || byAdded(first, second);
-    });
+    return byLatestFirst(sorted, sort === 'last' ? lastSeen : lastArrival, byAdded);
+}
+
+function newestArrival(arrivals: readonly { addedAt: number | null }[], newest: number): number {
+    return arrivals.reduce((latest, arrival) => {
+        return Math.max(latest, arrival.addedAt ?? 0);
+    }, newest);
+}
+
+export function animeLastArrival(entries: readonly LibraryAnime[]): number {
+    return entries.reduce((newest, anime) => {
+        return newestArrival(anime.episodes, newest);
+    }, 0);
+}
+
+export function mangaLastArrival(entries: readonly LibraryManga[]): number {
+    return entries.reduce((newest, manga) => {
+        return newestArrival(manga.chapters, newest);
+    }, 0);
 }
 
 export function animeLastSeen(entries: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[]): number {

@@ -4215,6 +4215,38 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(libraryOrder).toHaveValue('last');
     });
 
+    test('puts first in the library sorted by the last chapter added the manga whose chapter arrived last, not the one added last', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        fake.laterChapters = [103];
+        await session.page.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: '1 new chapter(s) added to the library: One Piece' }).first()).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK', exact: true }).click();
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        const libraryOrder = session.page.getByRole('combobox', { name: 'Sort by' });
+        const titles = session.page.getByTestId('manga-entry').locator('.row-link');
+        await expect(libraryOrder).toHaveValue('recent');
+        await expect(titles).toHaveText(['Bleach', 'One Piece']);
+
+        await expect(libraryOrder.locator('option', { hasText: 'Last chapter added' })).toHaveAttribute('value', 'arrival');
+        await libraryOrder.selectOption('arrival');
+        await expect(libraryOrder).toHaveValue('arrival');
+        await expect(titles).toHaveText(['One Piece', 'Bleach']);
+
+        fake.laterChapters = [103, 104];
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'new chapter(s) added to the library: Bleach' }).first()).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK', exact: true }).click();
+        await expect(titles).toHaveText(['Bleach', 'One Piece']);
+        await expect(libraryOrder).toHaveValue('arrival');
+    });
+
     test('keeps the order of the library for each tab of groups, even after the app is closed and opened again', async () => {
         session = await launch();
         await openManga(session.page);

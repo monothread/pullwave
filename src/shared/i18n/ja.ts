@@ -160,6 +160,8 @@ export const ja: Messages = {
     'library.sort.recent': '最近追加',
     'library.sort.lastWatched': '最近見た順',
     'library.sort.lastRead': '最近読んだ順',
+    'library.sort.lastEpisode': '最新エピソード追加順',
+    'library.sort.lastChapter': '最新チャプター追加順',
     'library.sort.az': 'A–Z',
     'library.sort.za': 'Z–A',
     'list.order.asc': '最初から',

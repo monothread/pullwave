@@ -15,8 +15,8 @@ interface LibraryControlsProps {
 }
 
 const SORT_KEYS = {
-    anime: { recent: 'library.sort.recent', last: 'library.sort.lastWatched', az: 'library.sort.az', za: 'library.sort.za' },
-    manga: { recent: 'library.sort.recent', last: 'library.sort.lastRead', az: 'library.sort.az', za: 'library.sort.za' }
+    anime: { recent: 'library.sort.recent', last: 'library.sort.lastWatched', arrival: 'library.sort.lastEpisode', az: 'library.sort.az', za: 'library.sort.za' },
+    manga: { recent: 'library.sort.recent', last: 'library.sort.lastRead', arrival: 'library.sort.lastChapter', az: 'library.sort.az', za: 'library.sort.za' }
 } as const;
 
 interface FilterChipProps {

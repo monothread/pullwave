@@ -2489,6 +2489,15 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
         expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
     });
 
+    it('shows first the title whose episode arrived last when asked, then the ones with no arrival as the ones added last', async () => {
+        render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'arrival');
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('arrival');
+        expect(screen.getByRole('option', { name: 'Last episode added' })).toHaveProperty('selected', true);
+        expect(cardNames()).toEqual(['Solo', 'Alpha Old', 'Saga']);
+        expect(useSortPrefsStore.getState().library.anime).toEqual({ ...RECENT_EVERYWHERE, all: 'arrival' });
+    });
+
     it('shows the titles by name from Z when asked', async () => {
         render(<AnimeLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'za');

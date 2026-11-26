@@ -5387,6 +5387,39 @@ test.describe('the look for new episodes', () => {
         await expect(page.getByTestId('anime-update').getByRole('button', { name: 'SHOW EPISODES: Fake Anime EP 4', exact: true })).toBeVisible();
     });
 
+    test('puts first in the library sorted by the last episode added the anime whose episode arrived last, not the one added last', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await addFakeAnime(page);
+        await openUpdates(page);
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+        sourceGetsAFourthEpisode();
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect(page.getByTestId('anime-update')).toHaveCount(1);
+
+        await openAnimeTab(page);
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+        await search(page, 'fake');
+        await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+        await confirmAdd(page);
+        await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        const order = page.getByRole('combobox', { name: 'Sort by' });
+        const cards = page.getByTestId('anime-card');
+        await expect(order).toHaveValue('recent');
+        await expect(cards).toHaveCount(2);
+        await expect(cards.nth(0)).toHaveAttribute('aria-label', 'Fake Anime 2');
+        await expect(cards.nth(1)).toHaveAttribute('aria-label', 'Fake Anime');
+
+        await expect(order.locator('option', { hasText: 'Last episode added' })).toHaveAttribute('value', 'arrival');
+        await order.selectOption('arrival');
+        await expect(order).toHaveValue('arrival');
+        await expect(cards.nth(0)).toHaveAttribute('aria-label', 'Fake Anime');
+        await expect(cards.nth(1)).toHaveAttribute('aria-label', 'Fake Anime 2');
+    });
+
     test('clears the list after asking, leaving the episode in the library', async () => {
         const page = await relaunch({ animeCheckNewEpisodes: false }, {});
         await addFakeAnime(page);

@@ -1,4 +1,4 @@
-import { NEWS_WINDOW_MS, SPOTLIGHT_LIMIT, LIBRARY_FILTERS, LIBRARY_SORTS, animeLastSeen, animeNews, animeSpotlight, animeGroupComplete, filterGroups, isRecent, mangaLastSeen, mangaNews, mangaSpotlight, mixSpotlight, sortGroups, type SpotlightItem } from '@renderer/spotlight/spotlightData';
+import { NEWS_WINDOW_MS, SPOTLIGHT_LIMIT, LIBRARY_FILTERS, LIBRARY_SORTS, animeLastArrival, animeLastSeen, animeNews, animeSpotlight, animeGroupComplete, filterGroups, isRecent, mangaLastArrival, mangaLastSeen, mangaNews, mangaSpotlight, mixSpotlight, sortGroups, type SpotlightItem } from '@renderer/spotlight/spotlightData';
 import { groupLibrary } from '@renderer/components/mangaText';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory, makeReading } from '../../helpers/homeFixtures';
@@ -14,10 +14,10 @@ function keys(items: readonly SpotlightItem[]): string[] {
 }
 
 describe('the constants', () => {
-    it('counts as new what arrived in the last seven days, shows eight highlights at most and sorts by date or by name, from A or from Z', () => {
+    it('counts as new what arrived in the last seven days, shows eight highlights at most and sorts by date, by the last arrival or by name, from A or from Z', () => {
         expect(NEWS_WINDOW_MS).toBe(7 * DAY);
         expect(SPOTLIGHT_LIMIT).toBe(8);
-        expect(LIBRARY_SORTS).toEqual(['recent', 'last', 'az', 'za']);
+        expect(LIBRARY_SORTS).toEqual(['recent', 'last', 'arrival', 'az', 'za']);
     });
 
     it('has the four filters of the chips over the grid of a library, in the order of the chips', () => {
@@ -179,7 +179,7 @@ describe('sortGroups and filterGroups', () => {
 
     it('sorts by the newest season first, then by name', () => {
         expect(
-            sortGroups(groups, 'recent', never).map((group) => {
+            sortGroups(groups, 'recent', never, never).map((group) => {
                 return group.series;
             })
         ).toEqual(['Alpha 10', 'beta', 'Same', 'alpha 2']);
@@ -187,7 +187,7 @@ describe('sortGroups and filterGroups', () => {
 
     it('sorts by name, whatever the case, with the numbers by their value', () => {
         expect(
-            sortGroups(groups, 'az', never).map((group) => {
+            sortGroups(groups, 'az', never, never).map((group) => {
                 return group.series;
             })
         ).toEqual(['alpha 2', 'Alpha 10', 'beta', 'Same']);
@@ -195,19 +195,19 @@ describe('sortGroups and filterGroups', () => {
 
     it('sorts by name from Z, whatever the case, with the numbers by their value', () => {
         expect(
-            sortGroups(groups, 'za', never).map((group) => {
+            sortGroups(groups, 'za', never, never).map((group) => {
                 return group.series;
             })
         ).toEqual(['Same', 'beta', 'Alpha 10', 'alpha 2']);
     });
 
     it('does not change the list it was given', () => {
-        sortGroups(groups, 'za', never);
+        sortGroups(groups, 'za', never, never);
         expect(groups[0]?.series).toBe('beta');
     });
 
     it('does not change the list it was given, by name from A either', () => {
-        sortGroups(groups, 'az', never);
+        sortGroups(groups, 'az', never, never);
         expect(groups[0]?.series).toBe('beta');
     });
 
@@ -217,10 +217,53 @@ describe('sortGroups and filterGroups', () => {
             return seen[group.series] ?? 0;
         };
         expect(
-            sortGroups(groups, 'last', lastSeen).map((group) => {
+            sortGroups(groups, 'last', lastSeen, never).map((group) => {
                 return group.series;
             })
         ).toEqual(['beta', 'alpha 2', 'Alpha 10', 'Same']);
+    });
+
+    it('sorts by the one whose episode or chapter arrived last first, then the ones with no arrival as the ones added last', () => {
+        const arrived: Record<string, number> = { Same: 20, 'alpha 2': 70 };
+        const lastArrival = (group: { series: string }): number => {
+            return arrived[group.series] ?? 0;
+        };
+        const lastSeen = vi.fn(never);
+        expect(
+            sortGroups(groups, 'arrival', lastSeen, lastArrival).map((group) => {
+                return group.series;
+            })
+        ).toEqual(['alpha 2', 'Same', 'Alpha 10', 'beta']);
+        expect(lastSeen).not.toHaveBeenCalled();
+    });
+
+    it('asks the moment of each group only once, however many times the groups are compared', () => {
+        const lastArrival = vi.fn((group: { series: string }): number => {
+            return group.series.length;
+        });
+        sortGroups(groups, 'arrival', never, lastArrival);
+        expect(lastArrival.mock.calls).toEqual(
+            groups.map((group) => {
+                return [group];
+            })
+        );
+    });
+
+    it('does not ask the moments for the orders by date or by name', () => {
+        const lastSeen = vi.fn(never);
+        const lastArrival = vi.fn(never);
+        sortGroups(groups, 'recent', lastSeen, lastArrival);
+        sortGroups(groups, 'az', lastSeen, lastArrival);
+        sortGroups(groups, 'za', lastSeen, lastArrival);
+        expect(lastSeen).not.toHaveBeenCalled();
+        expect(lastArrival).not.toHaveBeenCalled();
+    });
+
+    it('does not change the list it was given when it sorts by the last arrival', () => {
+        sortGroups(groups, 'arrival', never, () => {
+            return 1;
+        });
+        expect(groups[0]?.series).toBe('beta');
     });
 
     it('keeps everything, or only the groups with news', () => {
@@ -321,5 +364,32 @@ describe('animeLastSeen and mangaLastSeen', () => {
         const history = [makeReading({ id: 1, libraryMangaId: 5, readAt: 20 }), makeReading({ id: 2, libraryMangaId: 6, readAt: 40 }), makeReading({ id: 3, libraryMangaId: null, readAt: 90 }), makeReading({ id: 4, libraryMangaId: 7, readAt: 70 })];
         expect(mangaLastSeen(epic, history)).toBe(40);
         expect(mangaLastSeen([makeLibraryManga([], { id: 9 })], history)).toBe(0);
+    });
+});
+
+describe('animeLastArrival and mangaLastArrival', () => {
+    it('say when the last episode of any season of the group arrived, whenever it was', () => {
+        const saga = [
+            makeAnime([makeEpisode({ id: 1, addedAt: NOW - 30 * DAY }), makeEpisode({ id: 2, addedAt: null })], { id: 1 }),
+            makeAnime([makeEpisode({ id: 3, addedAt: NOW - 40 * DAY }), makeEpisode({ id: 4, addedAt: NOW - 20 * DAY })], { id: 2 })
+        ];
+        expect(animeLastArrival(saga)).toBe(NOW - 20 * DAY);
+    });
+
+    it('say when the last chapter of any manga of the group arrived, whenever it was', () => {
+        const epic = [
+            makeLibraryManga([makeChapterRecord({ id: 1, addedAt: NOW - 15 * DAY }), makeChapterRecord({ id: 2, addedAt: null })], { id: 5 }),
+            makeLibraryManga([makeChapterRecord({ id: 3, addedAt: NOW - 50 * DAY })], { id: 6 })
+        ];
+        expect(mangaLastArrival(epic)).toBe(NOW - 15 * DAY);
+    });
+
+    it('say 0 when nothing arrived after the group was added, or the group is empty', () => {
+        expect(animeLastArrival([makeAnime([makeEpisode({ addedAt: null })])])).toBe(0);
+        expect(animeLastArrival([makeAnime([])])).toBe(0);
+        expect(animeLastArrival([])).toBe(0);
+        expect(mangaLastArrival([makeLibraryManga([makeChapterRecord({ addedAt: null })])])).toBe(0);
+        expect(mangaLastArrival([makeLibraryManga([])])).toBe(0);
+        expect(mangaLastArrival([])).toBe(0);
     });
 });

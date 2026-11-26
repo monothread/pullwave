@@ -84,10 +84,10 @@ describe('readSortPrefs', () => {
     it('gives what is kept', () => {
         const prefs: SortPrefs = {
             library: {
-                anime: { all: 'za', news: 'last', complete: 'az', ongoing: 'recent' },
+                anime: { all: 'za', news: 'last', complete: 'az', ongoing: 'arrival' },
                 manga: {
                     all: { all: 'last', news: 'az', complete: 'za', ongoing: 'last' },
-                    'group:3': { all: 'za', news: 'recent', complete: 'recent', ongoing: 'az' }
+                    'group:3': { all: 'za', news: 'arrival', complete: 'recent', ongoing: 'az' }
                 }
             },
             list: { chapters: { 'src-1:42': 'desc' }, episodes: { 'sub|Frieren': 'desc', 'dub|Frieren': 'asc' } }

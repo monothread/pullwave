@@ -160,6 +160,8 @@ export const zh: Messages = {
     'library.sort.recent': '最近添加',
     'library.sort.lastWatched': '最近观看',
     'library.sort.lastRead': '最近阅读',
+    'library.sort.lastEpisode': '最近添加剧集',
+    'library.sort.lastChapter': '最近添加章节',
     'library.sort.az': 'A–Z',
     'library.sort.za': 'Z–A',
     'list.order.asc': '从第一个到最后一个',

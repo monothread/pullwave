@@ -98,22 +98,43 @@ describe('LibraryControls', () => {
         })).toEqual([
             ['recent', 'Recently added'],
             ['last', 'Last watched'],
+            ['arrival', 'Last episode added'],
             ['az', 'A–Z'],
             ['za', 'Z–A']
         ]);
         fireEvent.change(order, { target: { value: 'last' } });
         fireEvent.change(order, { target: { value: 'recent' } });
         fireEvent.change(order, { target: { value: 'za' } });
-        expect(onSort.mock.calls).toEqual([['last'], ['recent'], ['za']]);
+        fireEvent.change(order, { target: { value: 'arrival' } });
+        expect(onSort.mock.calls).toEqual([['last'], ['recent'], ['za'], ['arrival']]);
     });
 
-    it('calls it the last one read for the manga', () => {
+    it('calls it the last one read and the last chapter added for the manga', () => {
         renderControls('all', 'last', 'manga');
         const order = screen.getByRole('combobox', { name: 'Sort by' });
         expect(order).toHaveValue('last');
         expect(Array.from(order.querySelectorAll('option')).map((option) => {
-            return option.textContent;
-        })).toEqual(['Recently added', 'Last read', 'A–Z', 'Z–A']);
+            return [option.value, option.textContent];
+        })).toEqual([
+            ['recent', 'Recently added'],
+            ['last', 'Last read'],
+            ['arrival', 'Last chapter added'],
+            ['az', 'A–Z'],
+            ['za', 'Z–A']
+        ]);
+    });
+
+    it.each([
+        ['anime', 'Last episode added'],
+        ['manga', 'Last chapter added']
+    ] as const)('shows the order by the last arrival of the %s when it is the one chosen, and chooses it', (kind, label) => {
+        const { onSort } = renderControls('news', 'arrival', kind);
+        const order = screen.getByRole('combobox', { name: 'Sort by' });
+        expect(order).toHaveValue('arrival');
+        expect(screen.getByRole('option', { name: label })).toHaveProperty('selected', true);
+        fireEvent.change(order, { target: { value: 'recent' } });
+        fireEvent.change(order, { target: { value: 'arrival' } });
+        expect(onSort.mock.calls).toEqual([['recent'], ['arrival']]);
     });
 
     it('shows the order from Z when it is the one chosen', () => {
