@@ -95,7 +95,7 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 - **Home:** opens with a 5-second spotlight carousel featuring items you are currently watching or reading, followed by anime and manga with new releases in the last 7 days (finished chapters automatically advance to the next unread chapter; up-to-date manga leave the carousel). Below it are live status cards and quick actions for **Video Downloader**, **Anime**, and **Manga**.
 - **Navigation rail:** switches between **Home**, **Video Downloader**, **Anime**, **Manga**, and global **⚙ Settings**. Toggle **☰** to expand labels; on narrow windows it collapses into a bottom dock.
 - **Top bar:** unified search across your libraries (or directly in Anime/Manga search), a global downloads indicator (**⬇**) tracking active downloads and subtitle jobs (clicking **TRANSLATING** opens the subtitle progress view), a UI sound toggle, and a clock.
-- **Libraries:** share the same spotlight carousel, quick filter chips (**ALL**, **NEW** for the last 7 days, plus **ONGOING** and **COMPLETE** in Anime), persistent sort orders (recently added, last watched/read, A–Z, Z–A), and episode/chapter sort toggles. Detail views display full-bleed blurred cover backdrops.
+- **Libraries:** share the same spotlight carousel, quick filter chips (**ALL**, **NEW** for the last 7 days, plus **ONGOING** and **COMPLETE** in Anime), persistent sort orders (recently added, last watched/read, last episode/chapter added, A–Z, Z–A), and episode/chapter sort toggles. Detail views display full-bleed blurred cover backdrops.
 - **Keyboard, mouse & gamepad:** navigate controls with arrow keys (outside text inputs, the player, and the reader), use mouse back/forward buttons for screen history, or use a gamepad (D-pad / left stick to move, **A** to confirm, **B** to go back, **LB** / **RB** to switch sections).
 
 | Section | Tabs |
@@ -222,7 +222,7 @@ Read and collect manga from [Mihon/Tachiyomi](https://mihon.app) extensions on 6
 ### Browse, extensions & multi-source search
 ![Searching manga across all installed sources](docs/screenshots/manga-search.png)
 
-- **Extensions:** add any extension repository (`index.min.json`, with a quick button for [keiyoushi](https://github.com/keiyoushi/extensions)) and install the sources you trust.
+- **Extensions:** add any extension repository (`index.min.json`, with a quick button for [keiyoushi](https://github.com/keiyoushi/extensions)) and install the sources you trust. Each installed extension shows how many of your library manga come from it; click the number to see their cards and jump to any of them in the library.
 - **Browse:** explore each source's **Popular** and **Latest** catalogs with source-specific **FILTERS** (genres, tags, status, sort order) and per-source **⚙** preferences.
 - **Global Search:** search across all installed sources in your configured manga language at once (or toggle **Search every language**). Titles already saved from another source are labeled accordingly.
 - **Cloudflare support (optional):** enable [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) in **Manga → ⚙** via one-click **Docker** install or by pointing Pullwave to your own FlareSolverr URL.
