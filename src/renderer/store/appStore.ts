@@ -74,7 +74,7 @@ export interface AppState {
     refreshSettings: () => Promise<void>;
     refreshLlmStatus: () => Promise<void>;
     refreshBinaries: () => Promise<void>;
-    chooseDirectory: () => Promise<string | null>;
+    chooseDirectory: (defaultPath?: string) => Promise<string | null>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;
     installAppUpdate: () => Promise<void>;
@@ -314,8 +314,8 @@ export const useAppStore = create<AppState>((set, get) => {
             set({ binaries: await window.api.checkBinaries() });
         },
 
-        chooseDirectory: () => {
-            return window.api.chooseDirectory();
+        chooseDirectory: (defaultPath) => {
+            return defaultPath === undefined ? window.api.chooseDirectory() : window.api.chooseDirectory(defaultPath);
         },
 
         checkAppUpdate: async () => {

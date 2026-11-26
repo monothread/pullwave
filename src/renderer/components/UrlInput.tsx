@@ -60,7 +60,10 @@ export function UrlInput() {
     }
 
     async function chooseRowDirectory(id: number): Promise<void> {
-        const directory = await chooseDirectory();
+        const current = rows.find((row) => {
+            return row.id === id;
+        });
+        const directory = await chooseDirectory(current?.directory ?? settings.downloadDir);
         if (directory) {
             setRowDirectory(id, directory);
         }

@@ -484,8 +484,8 @@ const api: CyberApi = {
     listBrowsers: (refresh) => {
         return ipcRenderer.invoke(IPC.browsersList, refresh);
     },
-    chooseDirectory: () => {
-        return ipcRenderer.invoke(IPC.dialogChooseDir);
+    chooseDirectory: (defaultPath) => {
+        return ipcRenderer.invoke(IPC.dialogChooseDir, defaultPath);
     },
     showItemInFolder: (path) => {
         return ipcRenderer.invoke(IPC.shellShowItem, path);

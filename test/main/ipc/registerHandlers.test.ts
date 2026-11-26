@@ -338,10 +338,20 @@ describe('registerHandlers', () => {
         expect(appUpdates.install).toHaveBeenCalledTimes(1);
     });
 
-    it('opens the directory chooser', async () => {
+    it('opens the directory chooser without a default path when none is given', async () => {
         const { call, chooseDirectory } = setup();
         await expect(call(IPC.dialogChooseDir)).resolves.toBe('/chosen');
         expect(chooseDirectory).toHaveBeenCalledTimes(1);
+        expect(chooseDirectory).toHaveBeenCalledWith(undefined);
+    });
+
+    it('opens the directory chooser in the given absolute folder, in the default downloads folder for empty string, and ignores relative or non-string paths', async () => {
+        const { call, chooseDirectory, dir } = setup();
+        await expect(call(IPC.dialogChooseDir, '/media/videos')).resolves.toBe('/chosen');
+        await expect(call(IPC.dialogChooseDir, '')).resolves.toBe('/chosen');
+        await expect(call(IPC.dialogChooseDir, 'relative/folder')).resolves.toBe('/chosen');
+        await expect(call(IPC.dialogChooseDir, 42)).resolves.toBe('/chosen');
+        expect(chooseDirectory.mock.calls).toEqual([['/media/videos'], [join(dir, 'Downloads')], [undefined], [undefined]]);
     });
 
     it('shows an item in the folder only when the path is a non-empty string', () => {

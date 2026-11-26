@@ -2321,11 +2321,39 @@ test.describe('options for one download', () => {
 test.describe('folder for one download', () => {
     async function stubFolderDialog(own: Session, folder: string | null): Promise<void> {
         await own.app.evaluate(({ dialog }, chosen) => {
-            dialog.showOpenDialog = (async () => {
+            const globalBag = globalThis as { __folderDialogCalls?: Array<{ defaultPath?: string; properties?: string[] }> };
+            globalBag.__folderDialogCalls = [];
+            dialog.showOpenDialog = (async (...args: unknown[]) => {
+                const options = (args.length === 2 ? args[1] : args[0]) as { defaultPath?: string; properties?: string[] };
+                globalBag.__folderDialogCalls?.push({ defaultPath: options.defaultPath, properties: options.properties });
                 return { canceled: chosen === null, filePaths: chosen === null ? [] : [chosen] };
             }) as unknown as typeof dialog.showOpenDialog;
         }, folder);
     }
+
+    async function folderDialogCalls(own: Session): Promise<Array<{ defaultPath?: string; properties?: string[] }>> {
+        return own.app.evaluate(() => {
+            return (globalThis as { __folderDialogCalls?: Array<{ defaultPath?: string; properties?: string[] }> }).__folderDialogCalls ?? [];
+        });
+    }
+
+    test('opens the folder dialog in the configured download folder, and in the link folder when reopened', async () => {
+        const { page, downloadDir } = session;
+        const otherFolder = join(downloadDir, '..', 'picked-place');
+        await stubFolderDialog(session, otherFolder);
+
+        await page.getByRole('button', { name: 'Choose folder for link 1' }).click();
+        await expect(page.getByText(`Saving to: ${otherFolder}`)).toBeVisible();
+        await page.getByRole('button', { name: 'Choose folder for link 1' }).click();
+        await expect.poll(async () => {
+            return (await folderDialogCalls(session)).length;
+        }).toBe(2);
+
+        expect(await folderDialogCalls(session)).toEqual([
+            { defaultPath: downloadDir, properties: ['openDirectory', 'createDirectory'] },
+            { defaultPath: otherFolder, properties: ['openDirectory', 'createDirectory'] }
+        ]);
+    });
 
     test('sends one link to the chosen folder and keeps the others in the settings folder', async () => {
         const { page, logPath, downloadDir } = session;

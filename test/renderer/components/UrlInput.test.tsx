@@ -291,6 +291,30 @@ describe('UrlInput folder for one link', () => {
         expect(screen.getByText('Saving to: /media/special')).toBeInTheDocument();
     });
 
+    it('opens the folder chooser inside the configured download folder, or the row folder when already chosen', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, downloadDir: '/media/downloads' } });
+        mock.api.chooseDirectory.mockResolvedValueOnce('/media/downloads/sub').mockResolvedValueOnce('/media/downloads/other').mockResolvedValueOnce(null);
+        render(<UrlInput />);
+        await user.click(screen.getByRole('button', { name: 'Choose folder for link 1' }));
+        await screen.findByText('Saving to: /media/downloads/sub');
+        await user.click(screen.getByRole('button', { name: 'Choose folder for link 1' }));
+        await screen.findByText('Saving to: /media/downloads/other');
+        await user.click(screen.getByRole('button', { name: '+ ADD LINK' }));
+        await user.click(screen.getByRole('button', { name: 'Choose folder for link 2' }));
+        expect(mock.api.chooseDirectory.mock.calls).toEqual([['/media/downloads'], ['/media/downloads/sub'], ['/media/downloads']]);
+    });
+
+    it('passes an empty starting folder when no custom download folder is set', async () => {
+        const user = userEvent.setup();
+        mock.api.chooseDirectory.mockResolvedValueOnce(null);
+        render(<UrlInput />);
+        await user.click(screen.getByRole('button', { name: 'Choose folder for link 1' }));
+        await waitFor(() => {
+            expect(mock.api.chooseDirectory).toHaveBeenCalledWith('');
+        });
+    });
+
     it('starts the next row without a folder after a successful submit', async () => {
         const user = userEvent.setup();
         mock.api.chooseDirectory.mockResolvedValueOnce('/media/special');

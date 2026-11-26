@@ -576,7 +576,7 @@ export function createMockApi(): MockApiHandle {
         listBrowsers: vi.fn(async () => {
             return [];
         }),
-        chooseDirectory: vi.fn(async () => {
+        chooseDirectory: vi.fn<(defaultPath?: string) => Promise<string | null>>(async () => {
             return null;
         }),
         showItemInFolder: vi.fn(async () => {

@@ -35,7 +35,7 @@ export interface HandlerDependencies {
     refreshTraySupport: () => Promise<TraySupport>;
     browserCatalog: BrowserCatalog;
     onSettingsSaved: (settings: Settings) => void;
-    chooseDirectory: () => Promise<string | null>;
+    chooseDirectory: (defaultPath?: string) => Promise<string | null>;
     animeFolderLocked?: () => boolean;
     showItemInFolder: (path: string) => void;
     defaultDownloadDir: string;
@@ -126,8 +126,18 @@ export function registerHandlers(deps: HandlerDependencies): void {
     ipcMain.handle(IPC.browsersList, (_event, refresh): Promise<DetectedBrowser[]> => {
         return deps.browserCatalog.list(refresh === true);
     });
-    ipcMain.handle(IPC.dialogChooseDir, (): Promise<string | null> => {
-        return deps.chooseDirectory();
+    function resolveStartDirectory(defaultPath: unknown): string | undefined {
+        if (typeof defaultPath !== 'string') {
+            return undefined;
+        }
+        if (defaultPath.length === 0) {
+            return deps.defaultDownloadDir;
+        }
+        return isAbsolute(defaultPath) ? defaultPath : undefined;
+    }
+
+    ipcMain.handle(IPC.dialogChooseDir, (_event, defaultPath): Promise<string | null> => {
+        return deps.chooseDirectory(resolveStartDirectory(defaultPath));
     });
     ipcMain.handle(IPC.shellShowItem, (_event, path): void => {
         const target = asString(path);

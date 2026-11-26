@@ -521,9 +521,12 @@ describe('useAppStore settings and binaries', () => {
         expect(useAppStore.getState().llmStatus).toEqual({ canStore: false, providers: ['openai', 'speech-gemini'] });
     });
 
-    it('opens the directory chooser', async () => {
-        mock.api.chooseDirectory.mockResolvedValueOnce('/picked');
+    it('opens the directory chooser with or without a starting folder', async () => {
+        mock.api.chooseDirectory.mockResolvedValueOnce('/picked').mockResolvedValueOnce('/picked-2').mockResolvedValueOnce('/picked-3');
         await expect(useAppStore.getState().chooseDirectory()).resolves.toBe('/picked');
+        await expect(useAppStore.getState().chooseDirectory('/media/downloads')).resolves.toBe('/picked-2');
+        await expect(useAppStore.getState().chooseDirectory('')).resolves.toBe('/picked-3');
+        expect(mock.api.chooseDirectory.mock.calls).toEqual([[], ['/media/downloads'], ['']]);
     });
 });
 

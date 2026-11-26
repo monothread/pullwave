@@ -815,8 +815,11 @@ function bootstrap(): BootstrapResult {
         animeFolderLocked: () => {
             return anime !== null && anime.db.list().length > 0;
         },
-        chooseDirectory: async () => {
-            const options = { properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> };
+        chooseDirectory: async (defaultPath) => {
+            const options = {
+                ...(defaultPath !== undefined && defaultPath.length > 0 ? { defaultPath } : {}),
+                properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
+            };
             const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
             return result.canceled ? null : (result.filePaths[0] ?? null);
         },

@@ -441,7 +441,7 @@ export interface CyberApi {
     installAppUpdate: () => Promise<void>;
     getTraySupport: () => Promise<TraySupport>;
     listBrowsers: (refresh?: boolean) => Promise<DetectedBrowser[]>;
-    chooseDirectory: () => Promise<string | null>;
+    chooseDirectory: (defaultPath?: string) => Promise<string | null>;
     showItemInFolder: (path: string) => Promise<void>;
     getDiskUsage: (section: DiskSection) => Promise<DiskUsage | null>;
     getAnimeStatus: () => Promise<AnimeStatus>;
