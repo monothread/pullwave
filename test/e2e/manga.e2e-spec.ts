@@ -38,6 +38,9 @@ class FakeSuwayomi {
     imageDelayMs = 0;
     pagesArePicture = false;
     pageWidth: number | null = null;
+    pageHeight: number | null = null;
+    heldPages = new Set<string>();
+    private pageReleases: Array<() => void> = [];
     pageTotal = 3;
     failTimes = new Map<string, number>();
     adult = false;
@@ -72,11 +75,21 @@ class FakeSuwayomi {
     }
 
     async stop(): Promise<void> {
+        this.releasePages();
         await new Promise<void>((resolveStop) => {
             this.server?.close(() => {
                 resolveStop();
             });
             this.server?.closeAllConnections();
+        });
+    }
+
+    releasePages(): void {
+        this.heldPages.clear();
+        const pending = this.pageReleases;
+        this.pageReleases = [];
+        pending.forEach((release) => {
+            release();
         });
     }
 
@@ -265,6 +278,11 @@ class FakeSuwayomi {
                 setTimeout(resolveWait, this.imageDelayMs);
             });
         }
+        if (this.heldPages.has(path)) {
+            await new Promise<void>((resolveHold) => {
+                this.pageReleases.push(resolveHold);
+            });
+        }
         const failures = this.failTimes.get(path) ?? 0;
         if (failures > 0) {
             this.failTimes.set(path, failures - 1);
@@ -275,7 +293,7 @@ class FakeSuwayomi {
         const isCover = path.endsWith('/thumbnail') || path.endsWith('/icon');
         if (!isCover && this.pagesArePicture && this.pageWidth !== null) {
             response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
-            response.end(`<svg xmlns="http://www.w3.org/2000/svg" width="${String(this.pageWidth)}" height="300"><rect width="100%" height="100%" fill="#888"/></svg>`);
+            response.end(`<svg xmlns="http://www.w3.org/2000/svg" width="${String(this.pageWidth)}" height="${String(this.pageHeight ?? 300)}"><rect width="100%" height="100%" fill="#888"/></svg>`);
             return;
         }
         const picture = isCover || this.pagesArePicture;
@@ -1236,6 +1254,65 @@ test.describe('manga section', () => {
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('single');
         await expect(bar).toHaveAttribute('aria-valuenow', /^(33|67|100)$/);
+    });
+
+    test('does not pull back the progress bar when tall webtoon pages below finish loading', async () => {
+        fake.pagesArePicture = true;
+        fake.pageWidth = 800;
+        fake.pageHeight = 3200;
+        fake.pageTotal = 6;
+        for (let page = 1; page < fake.pageTotal; page += 1) {
+            fake.heldPages.add(`/api/v1/chapter/101/page/${String(page)}`);
+        }
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const bar = reader.getByRole('progressbar', { name: 'Reading progress' });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+
+        await expect(reader.locator('[data-testid="reader-slot-0"] img[data-page="0"]')).toBeVisible();
+        const area = session.page.locator('.app__main');
+        await area.evaluate((element) => {
+            element.scrollTop += 1800;
+        });
+        await expect.poll(async () => {
+            return Number(await bar.getAttribute('aria-valuenow'));
+        }).toBeGreaterThan(5);
+        const beforeLoad = Number(await bar.getAttribute('aria-valuenow'));
+        const widthBefore = await bar.locator('.progress__bar').getAttribute('style');
+        const heightBefore = await reader.getByTestId('reader-scroll').evaluate((element) => {
+            return element.getBoundingClientRect().height;
+        });
+
+        fake.releasePages();
+        await expect.poll(async () => {
+            return reader.getByTestId('reader-scroll').evaluate((element) => {
+                return element.getBoundingClientRect().height;
+            });
+        }).toBeGreaterThan(heightBefore + 2000);
+        await session.page.evaluate(async () => {
+            await new Promise<void>((resolveFrame) => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        resolveFrame();
+                    });
+                });
+            });
+        });
+        const afterLoad = Number(await bar.getAttribute('aria-valuenow'));
+        expect(afterLoad).toBe(beforeLoad);
+        expect(await bar.locator('.progress__bar').getAttribute('style')).toBe(widthBefore);
+
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+        });
+        await expect(bar).toHaveAttribute('aria-valuenow', '100');
+        await expect(bar.locator('.progress__bar')).toHaveAttribute('style', /width: 100%/);
     });
 
     test('goes back to the top with a gliding motion that the user can interrupt', async () => {

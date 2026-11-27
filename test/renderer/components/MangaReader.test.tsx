@@ -991,6 +991,116 @@ describe('MangaReader the progress of the chapter', () => {
         });
     });
 
+    describe('in the scroll with lazy manhwa pages', () => {
+        let main: HTMLElement;
+        let scrollTop: number;
+        let heights: number[];
+        let pageGap: number;
+        let resizeNotifiers: Array<() => void>;
+
+        beforeEach(() => {
+            main = document.createElement('div');
+            main.className = 'app__main';
+            document.body.appendChild(main);
+            scrollTop = 0;
+            heights = [5000, 630, 630, 630];
+            pageGap = 0;
+            resizeNotifiers = [];
+            class FakeResizeObserver {
+                constructor(handler: () => void) {
+                    resizeNotifiers.push(handler);
+                }
+                observe = vi.fn();
+                disconnect = vi.fn();
+            }
+            vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+                const rect = (top: number, height: number): DOMRect => {
+                    return { top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => { return {}; } } as DOMRect;
+                };
+                if (this === main) {
+                    return rect(0, 900);
+                }
+                const pageAttr = this.getAttribute('data-page');
+                if (pageAttr !== null) {
+                    const index = Number(pageAttr);
+                    let top = -scrollTop;
+                    for (let prior = 0; prior < index; prior += 1) {
+                        top += (heights[prior] ?? 0) + pageGap;
+                    }
+                    return rect(top, heights[index] ?? 0);
+                }
+                if (this.getAttribute('data-testid') === 'reader-scroll') {
+                    const totalHeight =
+                        heights.reduce((sum, height) => {
+                            return sum + height;
+                        }, 0) +
+                        pageGap * Math.max(0, heights.length - 1);
+                    return rect(-scrollTop, totalHeight);
+                }
+                return rect(0, 0);
+            });
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+            vi.restoreAllMocks();
+            main.remove();
+        });
+
+        it.each(['webtoon', 'vertical'] as const)('keeps the progress bar steady in %s mode when tall pages below finish loading', async (mode) => {
+            const user = userEvent.setup();
+            pageGap = mode === 'vertical' ? 8 : 0;
+            open({ pages: ['http://127.0.0.1:4321/p/0', 'http://127.0.0.1:4321/p/1', 'http://127.0.0.1:4321/p/2', 'http://127.0.0.1:4321/p/3'] });
+            render(<MangaReader />, { container: main.appendChild(document.createElement('div')) });
+            await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            await user.selectOptions(screen.getByLabelText('Reading mode'), mode);
+
+            const images = screen.getAllByRole('img');
+            fireEvent.load(images[0] as HTMLImageElement);
+
+            scrollTop = 4100;
+            act(() => {
+                main.dispatchEvent(new Event('scroll'));
+            });
+            const bar = screen.getByRole('progressbar', { name: 'Reading progress' });
+            const expectedFraction = 0.82 / 3.82;
+            const expectedBefore = Math.round(expectedFraction * 100);
+            const expectedWidth = `${String(expectedFraction * 100)}%`;
+            expect(bar).toHaveAttribute('aria-valuenow', String(expectedBefore));
+            expect(bar.querySelector('.progress__bar')).toHaveStyle({ width: expectedWidth });
+
+            heights[1] = 5000;
+            fireEvent.load(images[1] as HTMLImageElement);
+            act(() => {
+                resizeNotifiers.forEach((notify) => {
+                    notify();
+                });
+            });
+            expect(bar).toHaveAttribute('aria-valuenow', String(expectedBefore));
+            expect(bar.querySelector('.progress__bar')).toHaveStyle({ width: expectedWidth });
+
+            heights[2] = 5000;
+            heights[3] = 5000;
+            fireEvent.load(images[2] as HTMLImageElement);
+            fireEvent.load(images[3] as HTMLImageElement);
+            act(() => {
+                resizeNotifiers.forEach((notify) => {
+                    notify();
+                });
+            });
+            expect(bar).toHaveAttribute('aria-valuenow', String(expectedBefore));
+            expect(bar.querySelector('.progress__bar')).toHaveStyle({ width: expectedWidth });
+
+            scrollTop = 19100 + pageGap * 3;
+            act(() => {
+                main.dispatchEvent(new Event('scroll'));
+            });
+            expect(bar).toHaveAttribute('aria-valuenow', '100');
+            expect(bar.querySelector('.progress__bar')).toHaveStyle({ width: '100%' });
+        });
+    });
+
     it('is not there while the pages load or when there are none', () => {
         open({ status: 'loading', pages: [] });
         const { rerender } = render(<MangaReader />);
