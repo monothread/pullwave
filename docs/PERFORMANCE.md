@@ -94,3 +94,9 @@ Two rounds of review by agents that only reported what they could prove; every p
 ## Measured on 2026-11-14, Linux (X11, AMD GPU), 16 cores, 32 GB
 Windows: the minimize events and the JVM flags are the same there (Windows already tells Chromium about a minimized window; the message
 is harmless). Not measured on Windows.
+
+## Opt-in Performance mode (2026-11-27, D-213)
+The heavy visual hotspots previously left unchanged in Normal mode (neon progress bar chained `drop-shadow`/mask animations, `bp-sheen`, full-viewport aurora, `backdrop-filter` blurs, ambient `Backdrop` blur, and decorative JS/React `requestAnimationFrame` loops) are now addressable on demand through **Settings → General → Appearance & Window → Performance mode** (`Settings.performanceMode`, off by default).
+
+- **Measured in Electron (1920×1080, `cyberpunk` theme, `xvfb-run`):** Home idle CPU dropped from `133.1%` (`11` infinite animation loops) to `1.6%` (`0` loops); a screen with 6 finished progress bars dropped from `284.6%` (`23` loops) to `1.6%` (`0` loops).
+- **Mandatory rule going forward:** every future design or UI feature must be implemented in **both Normal mode and Performance mode** (`src/renderer/theme/performance.css` and `usePerformanceMode()` / `isPerformanceModeActive()`), keeping Normal mode visually complete while ensuring Performance mode adds zero heavy GPU/CPU loops, blurs, or filters (see `CONVENTIONS.md` and `DESIGN.md`).

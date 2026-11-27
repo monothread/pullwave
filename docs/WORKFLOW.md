@@ -8,11 +8,12 @@
 ## While working
 - Work on one task at a time; respect the files listed in the task to avoid conflicts between parallel agents.
 - Tasks from different phases can only run in parallel if they do not share files (`Files` column).
+- Any UI or design change (styles, animations, visual effects, components) must be implemented for **both Normal mode and Performance mode** (`:root[data-performance-mode]` in `src/renderer/theme/performance.css` and JS/React guards via `usePerformanceMode()` / `isPerformanceModeActive()`); see `CONVENTIONS.md` and `DESIGN.md`.
 - New decision or change of direction → new entry in `DECISIONS.md`.
 - New yt-dlp error mapped → `ERRORS.md`.
 
 ## When finishing
-1. Run the checks from `CONVENTIONS.md` (tsc, eslint, vitest).
+1. Run the checks from `CONVENTIONS.md` (tsc, eslint, vitest) and, for any UI/design change, verify both Normal mode and Performance mode (including live `OFF → ON → OFF` toggling).
 2. Mark the task `DONE` in `PROGRESS.md` with a handoff note (what was done, what is missing, pitfalls).
 3. Append an entry to `LOG.md` (date, owner, summary, files).
 

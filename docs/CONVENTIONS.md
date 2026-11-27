@@ -10,9 +10,20 @@
 - Modify only what the task requires; out-of-scope observations go in notes, untouched.
 - No two files in a folder may differ only in casing (`MangaSearch.tsx` and `mangaSearch.ts`): it is fine on Linux and breaks the build on Windows (found in 0.21.3).
 
+## Design and Performance mode (mandatory for every UI/design change)
+Pullwave has two visual modes controlled by `Settings.performanceMode` (default `false`, toggled in **Settings → General → Appearance & Window**, persisted in `settings.json` and mirrored to `localStorage` under `pullwave-performance-mode` and `<html data-performance-mode>`):
+- **Normal mode (`performanceMode: false`):** full visual experience with all animations, transitions, glows, blurs, particles, and decorative loops active.
+- **Performance mode (`performanceMode: true`, `:root[data-performance-mode]`):** preserves layout, spacing, theme palette, typography, and overall design fidelity while eliminating hardware-heavy GPU/CPU work.
+
+Whenever implementing or changing any visual feature, component, theme rule, animation, or effect, **you must implement it for both modes**:
+1. **CSS (`src/renderer/theme/performance.css`, loaded last):** add `:root[data-performance-mode]` overrides for any new infinite or heavy animation, `backdrop-filter`, expensive `filter`/`drop-shadow`, large multi-layer `box-shadow` glow, or GPU-heavy transition. Keep readable solid/translucent fallbacks and never hide or freeze terminal/interactive states (e.g. completed badges, progress bars, focus rings, overlays).
+2. **JS/React (`usePerformanceMode()` in components/hooks, `isPerformanceModeActive()` in imperative helpers):** guard any new decorative `requestAnimationFrame` loop, parallax/3D tilt handler, ripple, particle/confetti burst, animated counter, flying cover, or View Transition so it performs zero unnecessary work when Performance mode is active, while still showing the exact final data/state immediately.
+3. **Live runtime toggling (`OFF → ON → OFF`):** toggling Performance mode at runtime without restarting must immediately stop active effects and clear inline styles/timers/listeners, and turning it back off must cleanly restore Normal mode with no stale state.
+
 ## Tests
 - Every module has a complete test: definition, every if/else, loops, calls with exact parameters, success, failure and edge cases.
 - Unit **and** e2e are both evaluated whenever production code changes.
+- Any UI/design change that introduces animations, visual effects, or `:root[data-performance-mode]` rules must be tested in **both Normal mode and Performance mode**, including live toggling `OFF → ON → OFF`.
 - e2e: verify the result/status, relevant headers (if HTTP) and the full payload/shape.
 - Assertions use concrete values (`toEqual`, `toMatchObject`); no `any`/`expect.anything()` (exception: `expect.any(Date)`).
 - `describe`/`it` names and test comments are written in **English**.

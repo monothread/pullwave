@@ -62,7 +62,7 @@ src/
     downloads/ DownloadHero, SpeedGraph, speed, VideoThumbnail (the download going on, as on a console)
     fx/ FxLayer and the effects of bp-fun.css (FocusHalo, BrandWave, CountUp, FlipText, confetti, themeReveal, flyCover, konami, gamepadRumble, loopPause, the ripple, tilt and reveal hooks)
     sound/ uiSound (the tones of the navigation, Web Audio)
-    theme/bp-shell.css, bp-home.css, bp-library.css, bp-downloads.css (the structure of D-127 and D-128; see DESIGN.md), bp-fun.css (the effects layer), resolveTheme.ts
+    theme/bp-shell.css, bp-home.css, bp-library.css, bp-downloads.css (the structure of D-127 and D-128; see DESIGN.md), bp-fun.css (the effects layer), performance.css (`:root[data-performance-mode]` lightweight overrides, loaded last, D-213), resolveTheme.ts, performanceMode.ts (`data-performance-mode` attribute and `localStorage` mirror)
     i18n/ language (system locale), catalogs, useTranslator (React hook)
     components/ DownloadsPanel (QUEUE / EXPLORER / HISTORY / TOOLS / SETTINGS of the video downloader), UrlInput, QueueList, JobCard, SettingsPanel (scope: global / downloads / anime), HistoryList, ErrorBanner, BinaryStatus,
                 Toast, UpdateBanner, UpdateActions, fields,
@@ -70,7 +70,7 @@ src/
                 MediaToolsPanel (TOOLS tab with CUT / CONVERT / MERGE mode switcher), CutPanel, ConvertPanel, MergePanel, mediaToolHelpers (shared file drop & smooth progress bar), ExplorerPanel / ExplorerMediaPlayer / explorerHelpers (EXPLORER tab), ErrorNotice / ErrorDetailsDialog (the window with the details of an error), MangaLanguageSetting,
                 TopBarClock / clockText (the clock of the top bar), dateFormat (cached date/time formatters and day labeler), SectionIcon (the pictures of the sections), TopBar, SideNav, GlobalSearch, DownloadsIndicator, SoundToggle, Backdrop, Drawn,
                 VideoControls (the player's own control bar), PlayerSettings (its gear), SubtitleManagerDialog / SubtitleSizeControl (the window of the subtitles and the size, D-165), subtitleChoice / subtitleScale (what the viewer chose), SeriesFields (series name and season)
-    hooks/ useSpatialNavigation (arrow keys move the focus), useGamepadNavigation (a gamepad drives the app), useClock (the time of the top bar), useAppTimeZone (resolves Settings.timeZone to an IANA zone), useAutoSaveSettings (debounced settings auto-save), useMouseNavigation + navigationHistory + scrollRestoration (back/forward buttons of the mouse, with the scroll of each page), useFullscreenIdle (controls hide in fullscreen)
+    hooks/ useSpatialNavigation (arrow keys move the focus), useGamepadNavigation (a gamepad drives the app), useClock (the time of the top bar), useAppTimeZone (resolves Settings.timeZone to an IANA zone), usePerformanceMode (reads `Settings.performanceMode` from `appStore`, D-213), useAutoSaveSettings (debounced settings auto-save), useMouseNavigation + navigationHistory + scrollRestoration (back/forward buttons of the mouse, with the scroll of each page), useFullscreenIdle (controls hide in fullscreen)
     store/ (zustand): appStore, animeStore, mangaStore, cutStore, convertStore, mergeStore, explorerStore, programsStore, backdropStore, uiPrefsStore, sortPrefsStore, and their helpers (doneLinger, keyedRefresh, libraryEntryRefresh, subtitleActivity)
 test/            # unit tests mirroring src
 test/e2e/        # Playwright-Electron (fake yt-dlp via stub)
