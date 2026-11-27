@@ -104,6 +104,7 @@ export function sanitizeSettings(input: unknown): Settings {
         verifyLiveEnd: pickBoolean(raw.verifyLiveEnd, defaults.verifyLiveEnd),
         verifyLiveEndSeconds: pickClampedInteger(raw.verifyLiveEndSeconds, MIN_LIVE_END_CHECK_SECONDS, MAX_LIVE_END_CHECK_SECONDS, defaults.verifyLiveEndSeconds),
         ...sanitizeThemeChoice(raw),
+        performanceMode: pickBoolean(raw.performanceMode, defaults.performanceMode),
         language: pickEnum(raw.language, LANGUAGE_SETTINGS, defaults.language),
         timeZone: pickTimeZone(raw.timeZone, defaults.timeZone),
         extraArgs: pickString(raw.extraArgs, defaults.extraArgs),

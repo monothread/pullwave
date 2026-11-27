@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { FLYING_COVER_CLASS, TRANSITION_CLASS, canAnimatePages, withViewTransition } from '@renderer/navigation/viewTransition';
+import { applyPerformanceMode } from '@renderer/theme/performanceMode';
 
 type Start = (update: () => void) => { finished: Promise<unknown> };
 
@@ -34,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    applyPerformanceMode(false);
     Reflect.deleteProperty(document, 'startViewTransition');
     document.documentElement.classList.remove(TRANSITION_CLASS);
 });
@@ -110,6 +112,19 @@ describe('withViewTransition', () => {
         });
         withViewTransition(vi.fn(), cover);
         expect(flyingAtStart).toBe(true);
+        expect(cover).not.toHaveClass(FLYING_COVER_CLASS);
+    });
+
+    it('skips view transitions in performance mode and runs the update directly', () => {
+        const start = installStart();
+        applyPerformanceMode(true);
+        expect(canAnimatePages()).toBe(false);
+        const cover = document.createElement('span');
+        const update = vi.fn();
+        withViewTransition(update, cover);
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(start).not.toHaveBeenCalled();
+        expect(document.documentElement).not.toHaveClass(TRANSITION_CLASS);
         expect(cover).not.toHaveClass(FLYING_COVER_CLASS);
     });
 });

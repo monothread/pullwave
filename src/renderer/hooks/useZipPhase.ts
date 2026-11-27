@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePerformanceMode } from './usePerformanceMode';
 
 export type ZipPhase = 'parts' | 'split' | 'zip' | 'settle' | 'joined';
 
@@ -18,13 +19,19 @@ interface ZipState {
 }
 
 export function useZipPhase(joined: boolean): ZipPhase {
+    const performanceMode = usePerformanceMode();
     const [state, setState] = useState<ZipState>({ joined, phase: joined ? 'joined' : 'parts' });
     if (state.joined !== joined) {
-        setState({ joined, phase: joined ? 'split' : 'parts' });
+        setState({ joined, phase: joined ? (performanceMode ? 'joined' : 'split') : 'parts' });
+    } else if (performanceMode && joined && state.phase !== 'joined') {
+        setState({ joined: true, phase: 'joined' });
     }
-    const phase = state.phase;
+    const phase = performanceMode ? (joined ? 'joined' : 'parts') : state.phase;
 
     useEffect(() => {
+        if (performanceMode) {
+            return undefined;
+        }
         const next = NEXT[phase];
         if (next === undefined) {
             return undefined;
@@ -38,7 +45,7 @@ export function useZipPhase(joined: boolean): ZipPhase {
         return () => {
             clearTimeout(timer);
         };
-    }, [phase]);
+    }, [phase, performanceMode]);
 
     return phase;
 }

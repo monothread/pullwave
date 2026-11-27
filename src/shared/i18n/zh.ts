@@ -118,6 +118,8 @@ export const zh: Messages = {
     'manga.reader.complete': '本章读完',
     'settings.soundVolume': '声音音量',
     'settings.soundVolume.hint': '导航和事件短音效的音量。顶部栏的按钮可以开关音效。',
+    'settings.performanceMode': '性能模式',
+    'settings.performanceMode.hint': '关闭耗资源的视觉特效、持续动画和模糊滤镜，在保持界面风格的同时降低 CPU 和 GPU 占用。',
     'home.greeting.morning': '早上好',
     'home.greeting.afternoon': '下午好',
     'home.greeting.evening': '晚上好',

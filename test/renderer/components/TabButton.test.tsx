@@ -1,7 +1,38 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { DEFAULT_SETTINGS } from '@shared/constants';
+
+const motionSpanProps = vi.hoisted(() => {
+    return vi.fn();
+});
+
+vi.mock('motion/react', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('motion/react')>();
+    const RealMotionSpan = actual.motion.span;
+    return {
+        ...actual,
+        motion: {
+            ...actual.motion,
+            span: (props: Record<string, unknown>) => {
+                motionSpanProps(props);
+                return <RealMotionSpan {...props} />;
+            }
+        }
+    };
+});
+
 import { SETTINGS_ICON, TabButton } from '@renderer/components/TabButton';
+import { useAppStore } from '@renderer/store/appStore';
+
+beforeEach(() => {
+    motionSpanProps.mockClear();
+});
+
+afterEach(() => {
+    cleanup();
+    useAppStore.setState({ settings: DEFAULT_SETTINGS });
+});
 
 describe('TabButton', () => {
     it('shows its label as text and marks the current tab', () => {
@@ -131,5 +162,14 @@ describe('TabButton with a pill and a section', () => {
         expect(screen.getByRole('button', { name: 'ANIME' })).toHaveAttribute('data-section-id', 'anime');
         rerender(<TabButton label="ANIME" active={false} onClick={vi.fn()} />);
         expect(screen.getByRole('button', { name: 'ANIME' })).not.toHaveAttribute('data-section-id');
+    });
+
+    it('renders a static pill without invoking motion.span in performance mode', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        render(<TabButton label="ANIME" active pillId="nav-pill" decoration={<svg />} onClick={vi.fn()} />);
+        const pill = screen.getByRole('button', { name: 'ANIME' }).querySelector('.tab__pill');
+        expect(pill).not.toBeNull();
+        expect(pill).toHaveAttribute('aria-hidden', 'true');
+        expect(motionSpanProps).not.toHaveBeenCalled();
     });
 });

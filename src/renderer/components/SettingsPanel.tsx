@@ -337,6 +337,14 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                                 change('themeFamily', value);
                             }}
                         />
+                        <ToggleField
+                            label={t('settings.performanceMode')}
+                            checked={draft.performanceMode}
+                            hint={t('settings.performanceMode.hint')}
+                            onChange={(value) => {
+                                change('performanceMode', value);
+                            }}
+                        />
                         <SelectField
                             label={t('settings.language')}
                             value={draft.language}

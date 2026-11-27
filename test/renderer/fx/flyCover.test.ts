@@ -12,6 +12,7 @@ vi.mock('@renderer/sound/uiSound', () => {
 import { FLY_MS, findCover, findNavButton, flightOf, flyCoverToLibrary, NAV_PULSE_CLASS } from '@renderer/fx/flyCover';
 import { useFxStore } from '@renderer/fx/fxStore';
 import { useUiPrefsStore } from '@renderer/store/uiPrefsStore';
+import { applyPerformanceMode } from '@renderer/theme/performanceMode';
 
 function box(left: number, top: number, width: number, height: number): DOMRect {
     return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => { return {}; } } as DOMRect;
@@ -37,6 +38,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    applyPerformanceMode(false);
     vi.useRealTimers();
 });
 
@@ -112,5 +114,15 @@ describe('flyCoverToLibrary', () => {
         expect(nav.classList.contains(NAV_PULSE_CLASS)).toBe(true);
         vi.advanceTimersByTime(900);
         expect(nav.classList.contains(NAV_PULSE_CLASS)).toBe(false);
+    });
+
+    it('skips cloning, flying and dancing in performance mode while keeping the sound', () => {
+        const { cover } = mountPage();
+        applyPerformanceMode(true);
+        flyCoverToLibrary('anime', cover);
+        expect(playUiSoundMock.mock.calls).toEqual([['add']]);
+        expect(useFxStore.getState().dances).toBe(0);
+        expect(animateMock).not.toHaveBeenCalled();
+        expect(document.body.querySelector('body > img.cover')).toBeNull();
     });
 });

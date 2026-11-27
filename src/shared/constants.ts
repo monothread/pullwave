@@ -389,6 +389,7 @@ export const DEFAULT_SETTINGS: Settings = {
     verifyLiveEndSeconds: 10,
     themeMode: 'device',
     themeFamily: 'default',
+    performanceMode: false,
     language: 'device',
     timeZone: 'device',
     extraArgs: '',

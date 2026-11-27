@@ -199,6 +199,7 @@ export interface Settings {
     verifyLiveEndSeconds: number;
     themeMode: ThemeMode;
     themeFamily: ThemeFamilyId;
+    performanceMode: boolean;
     language: LanguageSetting;
     timeZone: string;
     extraArgs: string;

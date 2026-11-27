@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { act, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { FocusHalo, HALO_PADDING, haloBox } from '@renderer/fx/FocusHalo';
+import { useAppStore } from '@renderer/store/appStore';
 
 describe('haloBox', () => {
     it('is the box of the control with a margin all round', () => {
@@ -26,6 +28,8 @@ describe('FocusHalo', () => {
     });
 
     afterEach(() => {
+        cleanup();
+        useAppStore.setState({ settings: DEFAULT_SETTINGS });
         vi.restoreAllMocks();
         document.body.innerHTML = '';
     });
@@ -104,5 +108,41 @@ describe('FocusHalo', () => {
         unmount();
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
         expect((window.requestAnimationFrame as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(requested + 4);
+    });
+
+    it('renders nothing and clears stale focus state across dynamic OFF -> ON -> OFF toggles', () => {
+        const { container } = render(
+            <div>
+                <button type="button">ONE</button>
+                <FocusHalo />
+            </div>
+        );
+        const button = container.querySelector('button') as HTMLButtonElement;
+        button.getBoundingClientRect = () => { return { left: 20, top: 30, width: 100, height: 40 } as DOMRect; };
+        vi.spyOn(button, 'matches').mockReturnValue(true);
+        act(() => {
+            button.focus();
+        });
+        flush();
+        expect((container.querySelector('.focus-halo') as HTMLElement).dataset.visible).toBe('true');
+
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        });
+        expect(container.querySelector('.focus-halo')).toBeNull();
+        const callsBefore = (window.requestAnimationFrame as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+        act(() => {
+            button.blur();
+        });
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        window.dispatchEvent(new Event('scroll'));
+        expect((window.requestAnimationFrame as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
+
+        act(() => {
+            useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        });
+        const reopened = container.querySelector('.focus-halo') as HTMLElement;
+        expect(reopened).not.toBeNull();
+        expect(reopened.dataset.visible).toBe('false');
     });
 });

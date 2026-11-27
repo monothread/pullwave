@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { useBackdropStore } from '../store/backdropStore';
 
 export function nextLayers(current: readonly string[], url: string | null): string[] {
@@ -11,7 +12,7 @@ export function nextLayers(current: readonly string[], url: string | null): stri
     return [...current.slice(-1), url];
 }
 
-export function Backdrop() {
+function ActiveBackdrop() {
     const url = useBackdropStore((state) => {
         return state.url;
     });
@@ -29,4 +30,12 @@ export function Backdrop() {
             })}
         </div>
     );
+}
+
+export function Backdrop() {
+    const performanceMode = usePerformanceMode();
+    if (performanceMode) {
+        return null;
+    }
+    return <ActiveBackdrop />;
 }

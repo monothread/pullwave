@@ -43,6 +43,7 @@ describe('sanitizeSettings', () => {
             waitForLive: true,
             themeMode: 'light',
             themeFamily: 'nord',
+            performanceMode: true,
             language: 'ja',
             timeZone: 'Asia/Tokyo',
             verifyLiveEnd: false,
@@ -76,6 +77,17 @@ describe('sanitizeSettings', () => {
     it('keeps the manga folder empty and the format a CBZ by default', () => {
         expect(DEFAULT_SETTINGS).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
         expect(sanitizeSettings({})).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
+    });
+
+    it('keeps performance mode off by default and accepts only booleans', () => {
+        expect(DEFAULT_SETTINGS.performanceMode).toBe(false);
+        expect(sanitizeSettings({}).performanceMode).toBe(false);
+        expect(sanitizeSettings({ performanceMode: true }).performanceMode).toBe(true);
+        expect(sanitizeSettings({ performanceMode: false }).performanceMode).toBe(false);
+    });
+
+    it.each(['yes', 1, null, [], {}])('falls back to performance mode off for invalid value %j', (performanceMode) => {
+        expect(sanitizeSettings({ performanceMode }).performanceMode).toBe(false);
     });
 
     it('follows the system time zone by default and validates explicit IANA zones', () => {

@@ -68,4 +68,13 @@ describe('useSpeedHistory', () => {
         unmount();
         expect(vi.getTimerCount()).toBe(0);
     });
+
+    it('schedules no interval while inactive', async () => {
+        const { result } = renderHook(() => {
+            return useSpeedHistory('job-1', 50, false);
+        });
+        expect(vi.getTimerCount()).toBe(0);
+        await tick(3);
+        expect(result.current).toEqual([]);
+    });
 });

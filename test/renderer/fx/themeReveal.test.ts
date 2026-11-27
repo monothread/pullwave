@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { lastRevealPoint, rememberPoint, revealTheme, THEME_REVEAL_CLASS, trackPointerForReveal } from '@renderer/fx/themeReveal';
+import { applyPerformanceMode } from '@renderer/theme/performanceMode';
 
 type Starter = (update: () => void) => { finished: Promise<unknown> };
 
@@ -13,6 +14,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    applyPerformanceMode(false);
     Reflect.deleteProperty(document, 'startViewTransition');
     document.documentElement.removeAttribute('style');
     document.documentElement.className = '';
@@ -71,5 +73,16 @@ describe('revealTheme', () => {
         await finished;
         await Promise.resolve();
         expect(root.classList.contains(THEME_REVEAL_CLASS)).toBe(false);
+    });
+
+    it('skips the view transition in performance mode and runs the update directly', () => {
+        applyPerformanceMode(true);
+        const start = vi.fn();
+        setStarter(start);
+        const update = vi.fn();
+        revealTheme(update);
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(start).not.toHaveBeenCalled();
+        expect(document.documentElement.classList.contains(THEME_REVEAL_CLASS)).toBe(false);
     });
 });

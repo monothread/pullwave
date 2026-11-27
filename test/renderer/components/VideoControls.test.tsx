@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { createRef, type RefObject } from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { openedPlayerSettings } from '../../helpers/playerSettings';
 import { fakeTextTrackList, type FakeTextTrack } from '../../helpers/textTracks';
 import type { PlaybackRange } from '@renderer/components/playbackRange';
 import type { SubtitleManagerSetting } from '@renderer/components/PlayerSettings';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { VideoControls, formatClock, type SubtitleOption } from '@renderer/components/VideoControls';
+import { useAppStore } from '@renderer/store/appStore';
 import type { SeekPreviewSource } from '@renderer/components/seekPreview';
 
 const seekPreview = vi.hoisted(() => {
@@ -1193,6 +1195,8 @@ describe('VideoControls following the time at every frame', () => {
     });
 
     afterEach(() => {
+        cleanup();
+        useAppStore.setState({ settings: DEFAULT_SETTINGS });
         vi.restoreAllMocks();
     });
 
@@ -1257,6 +1261,22 @@ describe('VideoControls following the time at every frame', () => {
         unmount();
         expect(window.cancelAnimationFrame).toHaveBeenCalledTimes(2);
         expect(window.cancelAnimationFrame).toHaveBeenLastCalledWith(2);
+    });
+
+    it('skips the per-frame clock in performance mode and still updates from timeupdate', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        const { video } = setup();
+        Object.defineProperty(video, 'paused', { value: false, configurable: true });
+        act(() => {
+            fireEvent.play(video);
+        });
+        expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+        video.currentTime = 45;
+        act(() => {
+            fireEvent.timeUpdate(video);
+        });
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveValue('45');
+        expect(screen.getByText('0:45')).toBeInTheDocument();
     });
 });
 

@@ -117,6 +117,25 @@ describe('App', () => {
         expect(document.documentElement.hasAttribute('data-window-minimized')).toBe(false);
     });
 
+    it('applies and remembers performance mode when enabled in settings and clears it when turned off', async () => {
+        window.localStorage.clear();
+        document.documentElement.removeAttribute('data-performance-mode');
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, performanceMode: true });
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        await waitFor(() => {
+            expect(document.documentElement.hasAttribute('data-performance-mode')).toBe(true);
+        });
+        expect(window.localStorage.getItem('pullwave-performance-mode')).toBe('on');
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: false } });
+        });
+        await waitFor(() => {
+            expect(document.documentElement.hasAttribute('data-performance-mode')).toBe(false);
+        });
+        expect(window.localStorage.getItem('pullwave-performance-mode')).toBe('off');
+    });
+
     it('unsubscribes from events on unmount', async () => {
         const { unmount } = render(<App />);
         await openDownloader();

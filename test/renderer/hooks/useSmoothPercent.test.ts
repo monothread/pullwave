@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SMOOTH_MS, useSmoothPercent } from '@renderer/hooks/useSmoothPercent';
+import { useAppStore } from '@renderer/store/appStore';
 
 describe('useSmoothPercent', () => {
     let frames: Array<(time: number) => void>;
 
     beforeEach(() => {
         frames = [];
+        useAppStore.setState({ settings: DEFAULT_SETTINGS });
         vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
             frames.push(callback);
             return frames.length;
@@ -135,6 +138,28 @@ describe('useSmoothPercent', () => {
         expect(frames).toHaveLength(1);
         unmount();
         run(100);
+        expect(frames).toHaveLength(0);
+    });
+
+    it('jumps straight to higher values in a single render without scheduling frames in performance mode', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        let renders = 0;
+        const { result, rerender } = renderHook(
+            ({ value }) => {
+                renders += 1;
+                return useSmoothPercent(value);
+            },
+            { initialProps: { value: 10 } }
+        );
+        expect(renders).toBe(1);
+        rerender({ value: 85 });
+        expect(result.current).toBe(85);
+        expect(renders).toBe(2);
+        expect(frames).toHaveLength(0);
+        act(() => {
+            useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        });
+        expect(result.current).toBe(85);
         expect(frames).toHaveLength(0);
     });
 });

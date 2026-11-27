@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { useTranslator } from '../i18n/useTranslator';
 import { useBackdropStore } from '../store/backdropStore';
 import { parallaxOf } from './parallax';
@@ -97,9 +98,15 @@ function SlideView({ slide, label, leaving, entering }: SlideViewProps) {
 
 export function Spotlight({ slides, label }: SpotlightProps) {
     const t = useTranslator();
+    const performanceMode = usePerformanceMode();
+    const stageRef = useRef<HTMLDivElement | null>(null);
     const [index, setIndex] = useState(0);
     const [entering, setEntering] = useState<SlideDirection | null>(null);
     const [leaving, setLeaving] = useState<Leaving | null>(null);
+    if (performanceMode && (leaving !== null || entering !== null)) {
+        setLeaving(null);
+        setEntering(null);
+    }
     const showBackdrop = useBackdropStore((state) => {
         return state.show;
     });
@@ -110,6 +117,12 @@ export function Spotlight({ slides, label }: SpotlightProps) {
 
     const goTo = (next: number, direction: SlideDirection): void => {
         if (next === position || current === undefined) {
+            return;
+        }
+        if (performanceMode) {
+            setLeaving(null);
+            setEntering(null);
+            setIndex(next);
             return;
         }
         setLeaving({ slide: current, direction });
@@ -148,10 +161,15 @@ export function Spotlight({ slides, label }: SpotlightProps) {
 
     const imageUrl = current?.imageUrl ?? null;
     useEffect(() => {
+        if (performanceMode) {
+            stageRef.current?.style.removeProperty('--px');
+            stageRef.current?.style.removeProperty('--py');
+            return;
+        }
         if (imageUrl !== null) {
             showBackdrop(imageUrl);
         }
-    }, [imageUrl, showBackdrop]);
+    }, [imageUrl, performanceMode, showBackdrop]);
 
     if (current === undefined) {
         return null;
@@ -159,16 +177,25 @@ export function Spotlight({ slides, label }: SpotlightProps) {
     return (
         <section className="spotlight" aria-roledescription="carousel" aria-label={label}>
             <div
+                ref={stageRef}
                 className="spotlight__stage"
-                onPointerMove={(event) => {
-                    const { x, y } = parallaxOf(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
-                    event.currentTarget.style.setProperty('--px', x.toFixed(3));
-                    event.currentTarget.style.setProperty('--py', y.toFixed(3));
-                }}
-                onPointerLeave={(event) => {
-                    event.currentTarget.style.setProperty('--px', '0');
-                    event.currentTarget.style.setProperty('--py', '0');
-                }}
+                onPointerMove={
+                    performanceMode
+                        ? undefined
+                        : (event) => {
+                              const { x, y } = parallaxOf(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
+                              event.currentTarget.style.setProperty('--px', x.toFixed(3));
+                              event.currentTarget.style.setProperty('--py', y.toFixed(3));
+                          }
+                }
+                onPointerLeave={
+                    performanceMode
+                        ? undefined
+                        : (event) => {
+                              event.currentTarget.style.setProperty('--px', '0');
+                              event.currentTarget.style.setProperty('--py', '0');
+                          }
+                }
             >
                 {leaving !== null && <SlideView key={`leaving-${leaving.slide.key}`} slide={leaving.slide} label="" leaving={leaving.direction} />}
                 <SlideView key={current.key} slide={current} label={t('spotlight.position', { n: position + 1, total: count })} entering={entering ?? undefined} />

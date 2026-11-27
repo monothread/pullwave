@@ -35,8 +35,11 @@ export function applyTilt(card: HTMLElement, values: TiltValues | null): void {
     });
 }
 
-export function useCoverTilt(): void {
+export function useCoverTilt(enabled = true): void {
     useEffect(() => {
+        if (!enabled) {
+            return undefined;
+        }
         let frame = 0;
         let current: HTMLElement | null = null;
         const onPointerMove = (event: PointerEvent): void => {
@@ -64,8 +67,12 @@ export function useCoverTilt(): void {
         document.documentElement.addEventListener('pointerleave', onPointerLeave);
         return () => {
             window.cancelAnimationFrame(frame);
+            if (current !== null) {
+                applyTilt(current, null);
+                current = null;
+            }
             document.removeEventListener('pointermove', onPointerMove);
             document.documentElement.removeEventListener('pointerleave', onPointerLeave);
         };
-    }, []);
+    }, [enabled]);
 }

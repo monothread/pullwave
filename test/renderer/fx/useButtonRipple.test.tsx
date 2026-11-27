@@ -2,8 +2,8 @@
 import { render } from '@testing-library/react';
 import { RIPPLE_CLASS, RIPPLE_MS, RIPPLE_SELECTOR, startRipple, useButtonRipple } from '@renderer/fx/useButtonRipple';
 
-function Screen() {
-    useButtonRipple();
+function Screen({ enabled = true }: { enabled?: boolean }) {
+    useButtonRipple(enabled);
     return (
         <div>
             <button type="button" className="btn">
@@ -32,6 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.useRealTimers();
+    document.body.innerHTML = '';
 });
 
 describe('the ripple of a press', () => {
@@ -107,5 +108,12 @@ describe('the ripple of a press', () => {
         expect(control.style.getPropertyValue('--rx')).toBe('11px');
         expect(control.style.getPropertyValue('--ry')).toBe('13px');
         expect(control.classList.contains(RIPPLE_CLASS)).toBe(true);
+    });
+
+    it('does nothing when disabled', () => {
+        const { getByText } = render(<Screen enabled={false} />);
+        const button = getByText('PRESS');
+        press(button, 10, 10);
+        expect(button.classList.contains(RIPPLE_CLASS)).toBe(false);
     });
 });

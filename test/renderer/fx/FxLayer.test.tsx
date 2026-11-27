@@ -15,6 +15,7 @@ vi.mock('@renderer/sound/uiSound', () => {
     return { playUiSound: playUiSoundMock, setUiSoundVolume: vi.fn() };
 });
 
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { FxLayer } from '@renderer/fx/FxLayer';
 import { useFxStore } from '@renderer/fx/fxStore';
 import { RUMBLE_DONE } from '@renderer/fx/gamepadRumble';
@@ -28,7 +29,7 @@ beforeEach(() => {
     playUiSoundMock.mockReset();
     useFxStore.setState({ celebrations: 0, failures: 0, dances: 0, rainbow: false });
     useUiPrefsStore.setState({ sounds: true });
-    useAppStore.setState({ toasts: [], notice: null });
+    useAppStore.setState({ settings: DEFAULT_SETTINGS, toasts: [], notice: null });
 });
 
 function typeKonami(target: Window | Element = window): void {
@@ -134,5 +135,19 @@ describe('FxLayer', () => {
         unmount();
         typeKonami();
         expect(useFxStore.getState().rainbow).toBe(false);
+    });
+
+    it('skips confetti in performance mode on celebration and Konami while keeping sounds and rumble', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        render(<FxLayer />);
+        act(() => {
+            useFxStore.getState().celebrate();
+        });
+        expect(burstConfettiMock).not.toHaveBeenCalled();
+        expect(rumbleMock.mock.calls).toEqual([[RUMBLE_DONE]]);
+        expect(playUiSoundMock.mock.calls).toEqual([['done']]);
+        typeKonami();
+        expect(burstConfettiMock).not.toHaveBeenCalled();
+        expect(useFxStore.getState().rainbow).toBe(true);
     });
 });

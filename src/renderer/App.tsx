@@ -31,6 +31,7 @@ import { useMangaStore } from './store/mangaStore';
 import { useProgramsStore } from './store/programsStore';
 import { useAppStore, type Tab } from './store/appStore';
 import { useBackdropStore } from './store/backdropStore';
+import { applyPerformanceMode, rememberPerformanceMode } from './theme/performanceMode';
 import { applyTheme, DARK_SCHEME_QUERY, rememberTheme, systemPrefersDark } from './theme/resolveTheme';
 import { resolveThemeChoice } from '@shared/themeChoice';
 import type { ThemeChoice, ThemeName } from '@shared/types';
@@ -123,6 +124,9 @@ export function App() {
     const themeFamily = useAppStore((state) => {
         return state.settings.themeFamily;
     });
+    const performanceMode = useAppStore((state) => {
+        return state.settings.performanceMode;
+    });
 
     const settingsLoaded = useAppStore((state) => {
         return state.settingsLoaded;
@@ -130,8 +134,19 @@ export function App() {
 
     useSectionAccent(tab);
     useEffect(() => {
+        if (performanceMode) {
+            return undefined;
+        }
         return trackPointerForReveal();
-    }, []);
+    }, [performanceMode]);
+
+    useLayoutEffect(() => {
+        if (!settingsLoaded) {
+            return;
+        }
+        applyPerformanceMode(performanceMode);
+        rememberPerformanceMode(performanceMode);
+    }, [performanceMode, settingsLoaded]);
 
     const shownTheme = useRef<ThemeName | null>(null);
 

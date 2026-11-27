@@ -116,6 +116,8 @@ export const en = {
     'manga.reader.complete': 'CHAPTER COMPLETE',
     'settings.soundVolume': 'Sound volume',
     'settings.soundVolume.hint': 'How loud the short sounds of the navigation and of the events are. The button of the top bar turns them on and off.',
+    'settings.performanceMode': 'Performance mode',
+    'settings.performanceMode.hint': 'Turns off heavy visual effects, continuous animations and blur filters to lower CPU and GPU usage while keeping the same look.',
     'home.greeting.morning': 'Good morning',
     'home.greeting.afternoon': 'Good afternoon',
     'home.greeting.evening': 'Good evening',

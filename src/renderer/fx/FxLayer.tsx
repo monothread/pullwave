@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { useTranslator } from '../i18n/useTranslator';
 import { playUiSound } from '../sound/uiSound';
 import { useAppStore } from '../store/appStore';
@@ -16,20 +17,23 @@ function soundsOn(): boolean {
 
 export function FxLayer() {
     const t = useTranslator();
+    const performanceMode = usePerformanceMode();
     const celebrations = useFxStore((state) => {
         return state.celebrations;
     });
     const failures = useFxStore((state) => {
         return state.failures;
     });
-    useButtonRipple();
-    useCoverTilt();
+    useButtonRipple(!performanceMode);
+    useCoverTilt(!performanceMode);
 
     useEffect(() => {
         if (celebrations === 0) {
             return;
         }
-        burstConfetti();
+        if (!useAppStore.getState().settings.performanceMode) {
+            burstConfetti();
+        }
         rumbleGamepads(RUMBLE_DONE);
         if (soundsOn()) {
             playUiSound('done');
@@ -57,7 +61,9 @@ export function FxLayer() {
             useFxStore.getState().dance();
             if (on) {
                 useAppStore.getState().pushToast(t('fx.konami'));
-                burstConfetti({ x: 0.5, y: 0.4 });
+                if (!useAppStore.getState().settings.performanceMode) {
+                    burstConfetti({ x: 0.5, y: 0.4 });
+                }
             }
         };
         window.addEventListener('keydown', onKeyDown);

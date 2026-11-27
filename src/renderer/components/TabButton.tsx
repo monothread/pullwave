@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 
 export const SETTINGS_ICON = '⚙︎';
 
@@ -31,6 +32,10 @@ function TabContent({ label, icon, decoration }: Pick<TabButtonProps, 'label' | 
 }
 
 function TabPill({ id }: { id: string }) {
+    const performanceMode = usePerformanceMode();
+    if (performanceMode) {
+        return <span className="tab__pill" aria-hidden="true" />;
+    }
     return <motion.span layoutId={id} className="tab__pill" aria-hidden="true" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />;
 }
 

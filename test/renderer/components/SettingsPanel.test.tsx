@@ -54,6 +54,7 @@ describe('SettingsPanel layout', () => {
             expect(screen.queryByText(legend, { selector: 'legend' })).not.toBeInTheDocument();
         });
         expect(screen.getByLabelText('Light or dark mode')).toHaveValue('device');
+        expect(screen.getByLabelText('Performance mode')).not.toBeChecked();
         expect(screen.getByLabelText('Language')).toHaveValue('device');
         expect(screen.getByLabelText('Time zone')).toHaveValue('device');
         expect(screen.getByLabelText('Keep running in the system tray when the window is closed')).not.toBeChecked();
@@ -71,6 +72,7 @@ describe('SettingsPanel layout', () => {
             expect(screen.queryByText(legend)).not.toBeInTheDocument();
         });
         expect(screen.queryByLabelText('Light or dark mode')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Performance mode')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Time zone')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Check for updates on startup')).not.toBeInTheDocument();
@@ -164,7 +166,20 @@ describe('SettingsPanel language', () => {
         expect(screen.getByLabelText('Idioma')).toHaveValue('pt');
         expect(screen.getByLabelText('Fuso horário')).toHaveValue('device');
         expect(screen.getByLabelText('Modo claro ou escuro')).toBeInTheDocument();
+        expect(screen.getByLabelText('Modo desempenho')).not.toBeChecked();
         expect(screen.getByText('As alterações são salvas automaticamente.')).toBeInTheDocument();
+    });
+
+    it('saves performance mode immediately when toggled on and off', async () => {
+        render(<SettingsPanel scope="global" />);
+        const toggle = screen.getByLabelText('Performance mode');
+        expect(toggle).not.toBeChecked();
+        fireEvent.click(toggle);
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, performanceMode: true });
+        fireEvent.click(toggle);
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, performanceMode: false });
     });
 });
 

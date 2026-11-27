@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useFullscreenIdle } from '../hooks/useFullscreenIdle';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { useSubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useSeekPreview } from '../hooks/useSeekPreview';
 import { useVideoBuffer } from '../hooks/useVideoBuffer';
@@ -204,6 +205,7 @@ function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: Playba
 
 export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext, subtitleManager, preview }: VideoControlsProps) {
     const t = useTranslator();
+    const performanceMode = usePerformanceMode();
     const [state, setState] = useState<PlaybackState>(INITIAL_STATE);
     const subtitleStyle = useSubtitleStyle(video);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -221,7 +223,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
             return previous.currentTime === seconds ? previous : { ...previous, currentTime: seconds };
         });
     }, []);
-    useFrameClock(video, !state.paused, followTime);
+    useFrameClock(video, !state.paused && !performanceMode, followTime);
 
     useEffect(() => {
         const element = video.current;

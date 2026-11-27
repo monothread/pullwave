@@ -1,3 +1,5 @@
+import { isPerformanceModeActive } from '../theme/performanceMode';
+
 export const THEME_REVEAL_CLASS = 'vt-theme';
 
 interface ViewTransitionLike {
@@ -34,7 +36,7 @@ function starter(): StartViewTransition | null {
 }
 
 export function revealTheme(update: () => void): void {
-    const start = starter();
+    const start = isPerformanceModeActive() ? null : starter();
     if (start === null) {
         update();
         return;

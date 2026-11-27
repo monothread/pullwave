@@ -1,4 +1,5 @@
 import { flushSync } from 'react-dom';
+import { isPerformanceModeActive } from '../theme/performanceMode';
 
 export const TRANSITION_CLASS = 'vt-active';
 export const FLYING_COVER_CLASS = 'vt-cover';
@@ -15,11 +16,11 @@ function starter(): StartViewTransition | null {
 }
 
 export function canAnimatePages(): boolean {
-    return starter() !== null;
+    return !isPerformanceModeActive() && starter() !== null;
 }
 
 export function withViewTransition(update: () => void, cover: HTMLElement | null = null): void {
-    const start = starter();
+    const start = isPerformanceModeActive() ? null : starter();
     if (start === null) {
         update();
         return;

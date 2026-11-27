@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { isNavigable } from '../navigation/spatialNavigation';
 
 export interface HaloBox {
@@ -28,7 +29,7 @@ function focusedBox(): HaloBox | null {
     return haloBox(active.getBoundingClientRect());
 }
 
-export function FocusHalo() {
+function ActiveFocusHalo() {
     const [box, setBox] = useState<HaloBox | null>(null);
 
     useEffect(() => {
@@ -66,4 +67,12 @@ export function FocusHalo() {
             transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.7 }}
         />
     );
+}
+
+export function FocusHalo() {
+    const performanceMode = usePerformanceMode();
+    if (performanceMode) {
+        return null;
+    }
+    return <ActiveFocusHalo />;
 }

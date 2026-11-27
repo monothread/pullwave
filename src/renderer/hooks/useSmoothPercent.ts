@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
+import { usePerformanceMode } from './usePerformanceMode';
 
 export const SMOOTH_MS = 280;
 const SETTLED = 0.05;
 
 export function useSmoothPercent(target: number): number {
+    const performanceMode = usePerformanceMode();
     const [shown, setShown] = useState(target);
+    const [wasPerformanceMode, setWasPerformanceMode] = useState(performanceMode);
+    if (wasPerformanceMode !== performanceMode) {
+        setWasPerformanceMode(performanceMode);
+        if (wasPerformanceMode) {
+            setShown(target);
+        }
+    }
     const current = useRef(target);
 
     useEffect(() => {
+        if (performanceMode) {
+            current.current = target;
+            return undefined;
+        }
         if (target <= current.current) {
             current.current = target;
             setShown(target);
@@ -29,7 +42,7 @@ export function useSmoothPercent(target: number): number {
         return () => {
             cancelAnimationFrame(frame);
         };
-    }, [target]);
+    }, [target, performanceMode]);
 
-    return shown;
+    return performanceMode ? target : shown;
 }

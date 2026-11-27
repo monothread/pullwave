@@ -5,6 +5,7 @@ import { createTranslator, loadCatalog } from '../i18n/catalogs';
 import type { LlmStatus } from '@shared/llm';
 import { useFxStore } from '../fx/fxStore';
 import { resolveAppLanguage } from '../i18n/language';
+import { rememberedPerformanceMode } from '../theme/performanceMode';
 import { createDoneLinger } from './doneLinger';
 import type {
     AddJobResult,
@@ -124,7 +125,7 @@ export const useAppStore = create<AppState>((set, get) => {
         toolsMode: 'cut',
         jobs: [],
         history: [],
-        settings: DEFAULT_SETTINGS,
+        settings: { ...DEFAULT_SETTINGS, performanceMode: rememberedPerformanceMode() },
         settingsLoaded: false,
         binaries: null,
         notice: null,

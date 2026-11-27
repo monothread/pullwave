@@ -36,8 +36,8 @@ describe('applyTilt', () => {
     });
 });
 
-function Screen() {
-    useCoverTilt();
+function Screen({ enabled = true }: { enabled?: boolean }) {
+    useCoverTilt(enabled);
     return (
         <div>
             <div className="cover-grid">
@@ -69,6 +69,7 @@ describe('useCoverTilt', () => {
 
     afterEach(() => {
         vi.restoreAllMocks();
+        document.body.innerHTML = '';
     });
 
     function runFrame(): void {
@@ -128,6 +129,20 @@ describe('useCoverTilt', () => {
         unmount();
         document.body.appendChild(card);
         move(card, 1, 1);
+        expect(frames).toHaveLength(0);
+    });
+
+    it('registers no listeners, schedules no frames and clears any active tilt when disabled', () => {
+        const { getByTestId, rerender } = render(<Screen enabled />);
+        const card = getByTestId('one');
+        card.getBoundingClientRect = () => { return { ...BOX, right: 300, bottom: 400, x: 100, y: 100, toJSON: () => { return {}; } } as DOMRect; };
+        move(card, 300, 100);
+        runFrame();
+        expect(card.style.getPropertyValue('--tilt-x')).toBe('9.00deg');
+        rerender(<Screen enabled={false} />);
+        expect(card.style.getPropertyValue('--tilt-x')).toBe('0deg');
+        expect(card.style.getPropertyValue('--tilt-y')).toBe('0deg');
+        move(card, 300, 100);
         expect(frames).toHaveLength(0);
     });
 });

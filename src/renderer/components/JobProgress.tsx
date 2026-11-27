@@ -1,6 +1,7 @@
 import type { Translator } from '@shared/i18n';
 import type { DownloadJob } from '@shared/types';
 import { formatBytes, formatDuration, formatPercent, processingTextKey, type LivePhase } from './jobStatus';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { useZipPhase } from '../hooks/useZipPhase';
 import { hasParts } from './PartBars';
 import { PartsZipper } from './PartsZipper';
@@ -16,11 +17,14 @@ export function isJoined(job: Pick<DownloadJob, 'postProcess' | 'status'>): bool
 }
 
 export function JobProgress({ job, phase, t }: JobProgressProps) {
+    const performanceMode = usePerformanceMode();
     const zip = useZipPhase(isJoined(job));
     if (hasParts(job.parts) && zip !== 'joined' && (phase === null || phase === 'processing') && !(job.live && job.status === 'running')) {
         return <PartsZipper parts={job.parts} phase={zip} t={t} />;
     }
     if (phase === 'verifying' && job.endCheck !== null) {
+        const remaining = job.endCheck.totalSeconds > 0 ? Math.min(100, Math.max(0, (job.endCheck.secondsLeft / job.endCheck.totalSeconds) * 100)) : 0;
+        const barStyle = performanceMode ? { width: `${String(remaining)}%` } : { animationDuration: `${job.endCheck.totalSeconds}s` };
         return (
             <div
                 className="progress progress--verify"
@@ -30,7 +34,7 @@ export function JobProgress({ job, phase, t }: JobProgressProps) {
                 aria-valuemax={job.endCheck.totalSeconds}
                 aria-valuenow={job.endCheck.secondsLeft}
             >
-                <div className="progress__bar" style={{ animationDuration: `${job.endCheck.totalSeconds}s` }} />
+                <div className="progress__bar" style={barStyle} />
             </div>
         );
     }

@@ -1,6 +1,7 @@
 import { animate } from 'motion';
 import { playUiSound } from '../sound/uiSound';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
+import { isPerformanceModeActive } from '../theme/performanceMode';
 import { useFxStore } from './fxStore';
 
 export const FLY_MS = 0.75;
@@ -42,6 +43,9 @@ function pulse(button: HTMLElement): void {
 
 export function flyCoverToLibrary(section: LibrarySection, cover: HTMLElement | null = findCover()): void {
     playAddSound();
+    if (isPerformanceModeActive()) {
+        return;
+    }
     useFxStore.getState().dance();
     const target = findNavButton(section);
     if (cover === null || target === null) {

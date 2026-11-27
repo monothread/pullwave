@@ -16,8 +16,11 @@ export function startRipple(control: HTMLElement, clientX: number, clientY: numb
     }, RIPPLE_MS);
 }
 
-export function useButtonRipple(): void {
+export function useButtonRipple(enabled = true): void {
     useEffect(() => {
+        if (!enabled) {
+            return undefined;
+        }
         const onPointerDown = (event: PointerEvent): void => {
             if (!(event.target instanceof Element)) {
                 return;
@@ -32,5 +35,5 @@ export function useButtonRipple(): void {
         return () => {
             document.removeEventListener('pointerdown', onPointerDown, true);
         };
-    }, []);
+    }, [enabled]);
 }

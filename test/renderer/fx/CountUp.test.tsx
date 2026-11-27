@@ -8,7 +8,9 @@ vi.mock('motion', () => {
     return { animate: animateMock };
 });
 
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { CountUp } from '@renderer/fx/CountUp';
+import { useAppStore } from '@renderer/store/appStore';
 
 interface Options {
     duration: number;
@@ -22,6 +24,7 @@ beforeEach(() => {
     stop = vi.fn();
     animateMock.mockReset();
     animateMock.mockReturnValue({ stop });
+    useAppStore.setState({ settings: DEFAULT_SETTINGS });
 });
 
 describe('CountUp', () => {
@@ -61,5 +64,20 @@ describe('CountUp', () => {
         const { unmount } = render(<CountUp value={3} />);
         unmount();
         expect(stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders the final value immediately without animating in performance mode and avoids stale flash when turned off', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        const { container, rerender } = render(<CountUp value={42} />);
+        expect(container.textContent).toBe('42');
+        expect(animateMock).not.toHaveBeenCalled();
+        rerender(<CountUp value={99} />);
+        expect(container.textContent).toBe('99');
+        expect(animateMock).not.toHaveBeenCalled();
+        act(() => {
+            useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        });
+        expect(container.textContent).toBe('99');
+        expect(animateMock).not.toHaveBeenCalled();
     });
 });

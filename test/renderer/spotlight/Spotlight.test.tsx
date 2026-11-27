@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SPOTLIGHT_ROTATE_MS, SPOTLIGHT_SLIDE_MS, Spotlight, slideAfter, type SpotlightSlide } from '@renderer/spotlight/Spotlight';
+import { useAppStore } from '@renderer/store/appStore';
 import { useBackdropStore } from '@renderer/store/backdropStore';
 
 let reduceMotion = false;
@@ -29,6 +31,7 @@ beforeEach(() => {
         }
     });
     useBackdropStore.setState({ url: null });
+    useAppStore.setState({ settings: DEFAULT_SETTINGS });
 });
 
 afterEach(() => {
@@ -260,5 +263,29 @@ describe('Spotlight: the parallax', () => {
         fireEvent.pointerLeave(stage);
         expect(stage.style.getPropertyValue('--px')).toBe('0');
         expect(stage.style.getPropertyValue('--py')).toBe('0');
+    });
+
+    it('skips slide overlap transitions, backdrop updates and parallax in performance mode and clears stale parallax on toggle', () => {
+        render(<Spotlight slides={[slide(1), slide(2)]} label="Highlights" />);
+        const stage = document.querySelector('.spotlight__stage') as HTMLElement;
+        stage.getBoundingClientRect = () => { return { left: 0, top: 0, width: 400, height: 200 } as DOMRect; };
+        fireEvent.pointerMove(stage, { clientX: 300, clientY: 50 });
+        expect(stage.style.getPropertyValue('--px')).toBe('0.500');
+        fireEvent.click(screen.getByRole('button', { name: 'Next highlight' }));
+        expect(document.querySelector('.spotlight__slide--leaving')).not.toBeNull();
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+            useBackdropStore.setState({ url: null });
+        });
+        expect(document.querySelector('.spotlight__slide--leaving')).toBeNull();
+        expect(document.querySelector('.spotlight__slide--entering')).toBeNull();
+        expect(stage.style.getPropertyValue('--px')).toBe('');
+        expect(stage.style.getPropertyValue('--py')).toBe('');
+        fireEvent.pointerMove(stage, { clientX: 300, clientY: 50 });
+        expect(stage.style.getPropertyValue('--px')).toBe('');
+        fireEvent.click(screen.getByRole('button', { name: 'Previous highlight' }));
+        expect(shownTitle()).toBe('Title 1');
+        expect(document.querySelector('.spotlight__slide--leaving')).toBeNull();
+        expect(useBackdropStore.getState().url).toBeNull();
     });
 });

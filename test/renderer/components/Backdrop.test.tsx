@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { act, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { Backdrop, nextLayers } from '@renderer/components/Backdrop';
+import { useAppStore } from '@renderer/store/appStore';
 import { useBackdropStore } from '@renderer/store/backdropStore';
 
 afterEach(() => {
+    cleanup();
     useBackdropStore.setState({ url: null });
+    useAppStore.setState({ settings: DEFAULT_SETTINGS });
 });
 
 describe('nextLayers', () => {
@@ -64,5 +68,25 @@ describe('Backdrop', () => {
         });
         expect(images()).toEqual([]);
         expect(document.querySelector('.backdrop')).not.toHaveClass('backdrop--shown');
+    });
+
+    it('renders nothing in performance mode even when a cover is active and does not accumulate stale layers across toggles', () => {
+        const { container } = render(<Backdrop />);
+        act(() => {
+            useBackdropStore.getState().show('https://img/a.jpg');
+        });
+        expect(images()).toEqual(['https://img/a.jpg']);
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        });
+        expect(container).toBeEmptyDOMElement();
+        act(() => {
+            useBackdropStore.getState().show('https://img/b.jpg');
+        });
+        expect(container).toBeEmptyDOMElement();
+        act(() => {
+            useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        });
+        expect(images()).toEqual(['https://img/b.jpg']);
     });
 });

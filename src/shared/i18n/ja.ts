@@ -118,6 +118,8 @@ export const ja: Messages = {
     'manga.reader.complete': '章を読了',
     'settings.soundVolume': 'サウンドの音量',
     'settings.soundVolume.hint': 'ナビゲーションやイベントの短い効果音の大きさ。トップバーのボタンでオン・オフできます。',
+    'settings.performanceMode': 'パフォーマンスモード',
+    'settings.performanceMode.hint': 'デザインを保ちながら、重い視覚効果・常時アニメーション・ぼかしフィルターを無効にして CPU と GPU の負荷を下げます。',
     'home.greeting.morning': 'おはようございます',
     'home.greeting.afternoon': 'こんにちは',
     'home.greeting.evening': 'こんばんは',

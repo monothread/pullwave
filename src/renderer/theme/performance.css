@@ -1,0 +1,339 @@
+:root[data-performance-mode] {
+    transition: none;
+}
+
+:root[data-performance-mode] body::before {
+    inset: 0;
+    animation: none;
+}
+
+:root[data-performance-mode] .brand__bar {
+    animation: none;
+}
+
+:root[data-performance-mode] .brand__bar:nth-child(1) {
+    transform: scaleY(0.45);
+}
+
+:root[data-performance-mode] .brand__bar:nth-child(2) {
+    transform: scaleY(0.85);
+}
+
+:root[data-performance-mode] .brand__bar:nth-child(3) {
+    transform: scaleY(1);
+}
+
+:root[data-performance-mode] .brand__bar:nth-child(4) {
+    transform: scaleY(0.65);
+}
+
+:root[data-performance-mode] .brand__bar:nth-child(5) {
+    transform: scaleY(0.35);
+}
+
+:root[data-performance-mode] .logo::before,
+:root[data-performance-mode] .logo::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .topbar {
+    backdrop-filter: none;
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+}
+
+:root[data-performance-mode] .sidenav {
+    backdrop-filter: none;
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+}
+
+:root[data-performance-mode] .series.detail,
+:root[data-performance-mode] .manga__head.detail-hero {
+    backdrop-filter: none;
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+}
+
+:root[data-performance-mode] .modal-backdrop {
+    backdrop-filter: none;
+    background: rgba(3, 2, 10, 0.82);
+    animation: none;
+}
+
+:root[data-performance-mode] .player {
+    backdrop-filter: none;
+    background: rgba(0, 0, 0, 0.9);
+    animation: none;
+}
+
+:root[data-performance-mode] .toast {
+    backdrop-filter: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .toast--info::before,
+:root[data-performance-mode] .toast--info::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .player__auto-next {
+    backdrop-filter: none;
+    background: var(--panel);
+    animation: none;
+}
+
+:root[data-performance-mode] .progress,
+:root[data-performance-mode] .job--done .progress {
+    overflow: hidden;
+    animation: none;
+}
+
+:root[data-performance-mode] .progress .progress__bar {
+    filter: none;
+    background-clip: border-box !important;
+    mask-image: none;
+    box-shadow: none;
+    animation: none;
+}
+
+:root[data-performance-mode][data-theme-style='neon'] .progress .progress__bar {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--bar-glow) 55%, transparent);
+}
+
+:root[data-performance-mode] .progress .progress__bar::before,
+:root[data-performance-mode] .progress .progress__bar::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .progress:not([class*='progress--']) .progress__bar {
+    background: linear-gradient(90deg, var(--cyan), var(--magenta) 50%, var(--cyan));
+    background-size: 100% 100%;
+}
+
+:root[data-performance-mode] .job--done .progress .progress__bar,
+:root[data-performance-mode] .download-hero--done .progress .progress__bar {
+    background: var(--green);
+}
+
+:root[data-performance-mode] .job--error .progress .progress__bar {
+    background: var(--red);
+}
+
+:root[data-performance-mode] .zipper {
+    transition: none;
+}
+
+:root[data-performance-mode] .zipper__pull {
+    filter: none;
+}
+
+:root[data-performance-mode] .progress--verify::after,
+:root[data-performance-mode] .progress--waiting::after,
+:root[data-performance-mode] .progress--processing::after,
+:root[data-performance-mode] .progress--saving::after,
+:root[data-performance-mode] .progress--merging::after,
+:root[data-performance-mode] .progress--cloudflare::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .job--verifying,
+:root[data-performance-mode] .job--waiting,
+:root[data-performance-mode] .job--processing,
+:root[data-performance-mode] .job--saving,
+:root[data-performance-mode] .job--merging,
+:root[data-performance-mode] .badge--verifying,
+:root[data-performance-mode] .badge--waiting,
+:root[data-performance-mode] .badge--processing,
+:root[data-performance-mode] .badge--saving,
+:root[data-performance-mode] .badge--merging,
+:root[data-performance-mode] .badge--done,
+:root[data-performance-mode] .steps__item,
+:root[data-performance-mode] .steps__item--now::before,
+:root[data-performance-mode] .job__waiting::after,
+:root[data-performance-mode] .job__processing::after,
+:root[data-performance-mode] .job__saving::after,
+:root[data-performance-mode] .job__merging::after {
+    animation: none;
+}
+
+:root[data-performance-mode] .btn--primary::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] [data-hold='confirm']:active:not(:disabled) {
+    animation: none;
+    background-image: none;
+}
+
+:root[data-performance-mode] .update-banner {
+    background-image: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .btn:focus-visible,
+:root[data-performance-mode] .tab:focus-visible,
+:root[data-performance-mode] .episode-chip:focus-visible,
+:root[data-performance-mode] .player__button:focus-visible {
+    animation: none;
+}
+
+:root[data-performance-mode] .cover--none:empty,
+:root[data-performance-mode] .reader__loading-page,
+:root[data-performance-mode] .cut__thumb--loading,
+:root[data-performance-mode] .explorer__thumb--loading,
+:root[data-performance-mode] .empty:not(:is(.player, .reader, .modal) .empty)::before,
+:root[data-performance-mode] .downloads-indicator__button--busy .downloads-indicator__arrow,
+:root[data-performance-mode] .disk__segment--folder,
+:root[data-performance-mode] .disk__segment--sibling,
+:root[data-performance-mode] .disk__body,
+:root[data-performance-mode] .disk__item,
+:root[data-performance-mode] .disk__note,
+:root[data-performance-mode] .disk__loading {
+    animation: none;
+}
+
+:root[data-performance-mode] .not-found__rows span,
+:root[data-performance-mode] .not-found__lens,
+:root[data-performance-mode] .not-found__cross,
+:root[data-performance-mode] .not-found__burst,
+:root[data-performance-mode] .not-found__text {
+    animation: none;
+}
+
+:root[data-performance-mode] .not-found__cross {
+    transform: scale(1);
+}
+
+:root[data-performance-mode] .not-found__text {
+    opacity: 1;
+}
+
+:root[data-performance-mode] .backdrop {
+    display: none;
+}
+
+:root[data-performance-mode] .hero {
+    background:
+        radial-gradient(60% 120% at 85% 20%, color-mix(in srgb, var(--magenta) 24%, transparent) 0%, transparent 70%),
+        radial-gradient(50% 100% at 10% 100%, color-mix(in srgb, var(--cyan) 20%, transparent) 0%, transparent 70%),
+        var(--panel);
+}
+
+:root[data-performance-mode][data-theme='high-contrast'] .hero,
+:root[data-performance-mode][data-theme='high-contrast-light'] .hero,
+:root[data-performance-mode][data-theme='amoled'] .hero,
+:root[data-performance-mode][data-theme='amoled-light'] .hero {
+    background: var(--panel);
+}
+
+:root[data-performance-mode] .hero::before,
+:root[data-performance-mode] .hero::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .spotlight__slide--entering,
+:root[data-performance-mode] .spotlight__slide--leaving {
+    animation: none;
+}
+
+:root[data-performance-mode] .spotlight__dot--current::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .spotlight__slide .hero__art {
+    transform: none;
+    transition: none;
+}
+
+:root[data-performance-mode] .cover--loading {
+    filter: none;
+    opacity: 1;
+}
+
+:root[data-performance-mode] img.cover:not(.cover--loading) {
+    animation: none;
+}
+
+:root[data-performance-mode] .cover-card::before,
+:root[data-performance-mode] .cover-grid > .cover-card::after {
+    display: none;
+    animation: none;
+}
+
+:root[data-performance-mode] .cover-grid > .cover-card:hover > .cover,
+:root[data-performance-mode] .cover-grid > .cover-card:has(.row-link:focus-visible) > .cover {
+    transform: translateY(-2px);
+}
+
+:root[data-performance-mode] .cover-card:hover .cover,
+:root[data-performance-mode] .cover-card:has(.row-link:focus-visible) .cover {
+    filter: none;
+}
+
+:root[data-performance-mode] .app__main > *,
+:root[data-performance-mode] .settings > .panel,
+:root[data-performance-mode] .history__list > .history__item,
+:root[data-performance-mode] .cover-grid > .cover-card,
+:root[data-performance-mode] .section-card,
+:root[data-performance-mode] .download-hero,
+:root[data-performance-mode] .stats,
+:root[data-performance-mode] .detail__art .cover,
+:root[data-performance-mode] .manga__head.detail-hero .cover,
+:root[data-performance-mode] .hero__art .cover,
+:root[data-performance-mode] .modal,
+:root[data-performance-mode] .global-search__list,
+:root[data-performance-mode] .downloads-indicator__panel,
+:root[data-performance-mode] .sidenav__scrim,
+:root[data-performance-mode] .cut__thumb,
+:root[data-performance-mode] .sidenav .tab--active .tab__decoration,
+:root[data-performance-mode] .sidenav .tab:hover .section-icon,
+:root[data-performance-mode] .sidenav .tab--active .section-icon,
+:root[data-performance-mode] .error-banner,
+:root[data-performance-mode] .is-rippling,
+:root[data-performance-mode] .tab--pulse,
+:root[data-performance-mode] .flip__char,
+:root[data-performance-mode] .player__box,
+:root[data-performance-mode] .player__settings,
+:root[data-performance-mode] .player__settings > *,
+:root[data-performance-mode] .player__button .player__icon,
+:root[data-performance-mode] .reader__stage[data-turn] .reader__img,
+:root[data-performance-mode] .reader__stage:not([data-turn]) .reader__img,
+:root[data-performance-mode] .reader__scroll .reader__img,
+:root[data-performance-mode] .reader__page-text,
+:root[data-performance-mode] .reader__settings,
+:root[data-performance-mode] .reader__settings > .field,
+:root[data-performance-mode] .reader__zone-arrow,
+:root[data-performance-mode] .reader__auto-flow > span,
+:root[data-performance-mode] .reader__top {
+    animation: none;
+}
+
+:root[data-performance-mode] .player__video::cue {
+    text-shadow:
+        0.08em 0 0 #0b1a4a,
+        -0.08em 0 0 #0b1a4a,
+        0 0.08em 0 #0b1a4a,
+        0 -0.08em 0 #0b1a4a,
+        0 0.08em 0.1em rgba(0, 0, 0, 0.6);
+}
+
+:root[data-performance-mode] .player__spinner,
+:root[data-performance-mode] .player__auto-next-ring-fill,
+:root[data-performance-mode] .speed-graph__line,
+:root[data-performance-mode] .tab__decoration .section-icon,
+:root[data-performance-mode] .section-card__title .section-icon,
+:root[data-performance-mode] .disk__segment--folder,
+:root[data-performance-mode] .disk__segment--sibling,
+:root[data-performance-mode] .not-found__lens svg,
+:root[data-performance-mode] .not-found__cross {
+    filter: none;
+}
+
+:root[data-performance-mode] .focus-halo {
+    display: none;
+}

@@ -1,5 +1,6 @@
 import { animate } from 'motion';
 import { useEffect, useRef, useState } from 'react';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 
 interface CountUpProps {
     value: number;
@@ -7,9 +8,19 @@ interface CountUpProps {
 }
 
 export function CountUp({ value, seconds = 0.9 }: CountUpProps) {
-    const [shown, setShown] = useState(0);
-    const from = useRef(0);
+    const performanceMode = usePerformanceMode();
+    const [shown, setShown] = useState(() => {
+        return performanceMode ? value : 0;
+    });
+    if (performanceMode && shown !== value) {
+        setShown(value);
+    }
+    const from = useRef(performanceMode ? value : 0);
     useEffect(() => {
+        if (performanceMode || from.current === value) {
+            from.current = value;
+            return undefined;
+        }
         const controls = animate(from.current, value, {
             duration: seconds,
             ease: 'easeOut',
@@ -21,6 +32,6 @@ export function CountUp({ value, seconds = 0.9 }: CountUpProps) {
         return () => {
             controls.stop();
         };
-    }, [value, seconds]);
-    return <span className="count-up">{shown}</span>;
+    }, [value, seconds, performanceMode]);
+    return <span className="count-up">{performanceMode ? value : shown}</span>;
 }

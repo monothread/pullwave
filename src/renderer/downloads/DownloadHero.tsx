@@ -52,7 +52,7 @@ function barClass(processing: boolean): string {
 export function DownloadHero({ id, title, detail, percent, parts = null, postProcess = null, steps = NO_STEPS, done = false, speed, eta, kind, cover, coverShape = 'poster', waiting }: DownloadHeroProps) {
     const t = useTranslator();
     const zip = useZipPhase(postProcess !== null || done);
-    const samples = useSpeedHistory(id, parseSpeed(speed));
+    const samples = useSpeedHistory(id, parseSpeed(speed), !done && speed !== '');
     const peak = samples.length > 0 ? Math.max(...samples) : 0;
     const shown = clampPercent(percent);
     const flowDuration = `${String(flowSeconds(parseSpeed(speed)))}s`;

@@ -118,6 +118,8 @@ export const es: Messages = {
     'manga.reader.complete': 'CAPÍTULO COMPLETO',
     'settings.soundVolume': 'Volumen de los sonidos',
     'settings.soundVolume.hint': 'Qué tan fuertes son los sonidos cortos de la navegación y de los eventos. El botón de la barra superior los activa y desactiva.',
+    'settings.performanceMode': 'Modo rendimiento',
+    'settings.performanceMode.hint': 'Desactiva efectos visuales pesados, animaciones continuas y filtros de desenfoque para reducir el uso de CPU y GPU manteniendo el mismo diseño.',
     'home.greeting.morning': 'Buenos días',
     'home.greeting.afternoon': 'Buenas tardes',
     'home.greeting.evening': 'Buenas noches',

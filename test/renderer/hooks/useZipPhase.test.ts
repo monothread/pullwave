@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { useZipPhase, ZIP_CLOSE_MS, ZIP_SETTLE_MS, ZIP_SPLIT_MS, type ZipPhase } from '@renderer/hooks/useZipPhase';
+import { useAppStore } from '@renderer/store/appStore';
 
 function renderZip(joined: boolean) {
     return renderHook(
@@ -22,6 +24,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    cleanup();
+    useAppStore.setState({ settings: DEFAULT_SETTINGS });
     vi.useRealTimers();
 });
 
@@ -103,6 +107,15 @@ describe('useZipPhase', () => {
         const { rerender, unmount } = renderZip(false);
         rerender({ value: true });
         unmount();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('jumps straight to joined without scheduling timers in performance mode', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        const { result, rerender } = renderZip(false);
+        expect(result.current).toBe('parts');
+        rerender({ value: true });
+        expect(result.current).toBe('joined');
         expect(vi.getTimerCount()).toBe(0);
     });
 });

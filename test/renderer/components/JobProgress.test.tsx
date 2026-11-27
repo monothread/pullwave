@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { createTranslator } from '@shared/i18n';
 import { isJoined, JobMeta, JobProgress } from '@renderer/components/JobProgress';
 import { ZIP_CLOSE_MS, ZIP_SETTLE_MS, ZIP_SPLIT_MS } from '@renderer/hooks/useZipPhase';
+import { useAppStore } from '@renderer/store/appStore';
 import type { DownloadPart } from '@shared/types';
 import { makeJob } from '../../helpers/mockApi';
+
+afterEach(() => {
+    cleanup();
+    useAppStore.setState({ settings: DEFAULT_SETTINGS });
+});
 
 const t = createTranslator('en');
 const END_CHECK = { secondsLeft: 4, totalSeconds: 10 };
@@ -114,6 +121,15 @@ describe('JobProgress', () => {
         render(<JobProgress job={makeJob({ live: true, parts: PARTS })} phase={null} t={t} />);
         expect(screen.getByRole('progressbar', { name: 'Recording a live stream' })).toHaveClass('progress--live');
         expect(screen.queryByTestId('job-parts')).not.toBeInTheDocument();
+    });
+
+    it('uses inline width instead of animationDuration for verifying countdown bars in performance mode', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, performanceMode: true } });
+        render(<JobProgress job={makeJob({ live: true, endCheck: END_CHECK })} phase="verifying" t={t} />);
+        const bar = screen.getByRole('progressbar', { name: 'Checking whether the live stream really ended' });
+        const fill = bar.firstElementChild as HTMLElement;
+        expect(fill.style.width).toBe('40%');
+        expect(fill.style.animationDuration).toBe('');
     });
 });
 
