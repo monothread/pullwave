@@ -837,6 +837,75 @@ describe('useMouseNavigation', () => {
             expect(useMangaStore.getState().selectionFrom).toBe('browse');
         });
 
+        it('goes back in one step from the latest or popular listing of a source opened from a library manga', async () => {
+            mount();
+            act(() => {
+                useMangaStore.setState({
+                    view: 'library',
+                    browse: {
+                        ...useMangaStore.getState().browse,
+                        sources: [makeSource({ id: '123', supportsLatest: true }), makeSource({ id: '456', supportsLatest: false })],
+                        sourcesStatus: 'ready'
+                    }
+                });
+            });
+            await act(async () => {
+                await useMangaStore.getState().openManga(makeSummary({ remoteId: 7, sourceId: '123' }));
+            });
+            act(() => {
+                useMangaStore.getState().openSourceLatest('123');
+            });
+            expect(useMangaStore.getState()).toMatchObject({ view: 'browse', selection: null });
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'latest' });
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ view: 'library', selectionFrom: 'library' });
+            expect(useMangaStore.getState().selection?.manga.remoteId).toBe(7);
+
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ view: 'browse', selection: null });
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'latest' });
+
+            press(MOUSE_BACK_BUTTON);
+            act(() => {
+                useMangaStore.getState().openSourceLatest('456');
+            });
+            expect(useMangaStore.getState()).toMatchObject({ view: 'browse', selection: null });
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '456', mode: 'popular' });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ view: 'library', selectionFrom: 'library' });
+        });
+
+        it('resets library category filters when navigating back or forward across different group tabs', () => {
+            mount();
+            act(() => {
+                useMangaStore.setState({
+                    view: 'library',
+                    groups: [
+                        { id: 1, name: 'Romcoms' },
+                        { id: 2, name: 'Shonen' }
+                    ],
+                    libraryGroup: 1
+                });
+            });
+            act(() => {
+                useMangaStore.getState().setLibraryGroup(2);
+            });
+            act(() => {
+                useMangaStore.getState().setLibraryGenres(['Action'], 'and');
+            });
+            expect(useMangaStore.getState()).toMatchObject({ libraryGroup: 2, libraryGenres: ['Action'], libraryGenreMode: 'and' });
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ libraryGroup: 1, libraryGenres: [], libraryGenreMode: 'or' });
+
+            act(() => {
+                useMangaStore.getState().setLibraryGenres(['Romance'], 'and');
+            });
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ libraryGroup: 2, libraryGenres: [], libraryGenreMode: 'or' });
+        });
+
         it('opens and closes the settings of a source with the buttons', async () => {
             mount();
             act(() => {

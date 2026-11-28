@@ -54,6 +54,8 @@ class FakeSuwayomi {
     keptChapters: Array<{ id: number; name: string; chapterNumber: number; uploadDate: string; scanlator: null; sourceOrder: number }> = [];
     laterChapters: number[] = [];
     mangaStatus = 'ONGOING';
+    supportsLatest = true;
+    genresById = new Map<number, string[]>();
     unlistedChapters = new Set<number>();
     extensionLib = '1.4';
     failDetails = false;
@@ -159,7 +161,7 @@ class FakeSuwayomi {
         }
         if (query.trim().startsWith('{ sources')) {
             const local = { id: '0', name: 'Local source', displayName: 'Local source', lang: 'localsourcelang', iconUrl: '', supportsLatest: false, contentWarning: 'SAFE', extension: { pkgName: 'local' } };
-            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG, storeIndexUrl: STORE_URL } };
+            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: this.supportsLatest, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG, storeIndexUrl: STORE_URL } };
             const other = { ...site, id: OTHER_SOURCE_ID, name: 'Other Dex', displayName: 'Other Dex' };
             return { sources: { nodes: this.installed ? (this.otherSource && this.otherSourceFirst ? [local, other, site] : [local, site, ...(this.otherSource ? [other] : [])]) : [local] } };
         }
@@ -229,7 +231,7 @@ class FakeSuwayomi {
             }
             return {
                 fetchMangaAndChapters: {
-                    manga: { ...this.manga(id, id === 7 ? this.detailsTitle : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: this.mangaStatus },
+                    manga: { ...this.manga(id, id === 7 ? this.detailsTitle : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: this.genresById.get(id) ?? ['Action'], status: this.mangaStatus },
                     chapters: [
                         { id: 101, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'Group A', sourceOrder: 1 },
                         { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 },
@@ -2334,6 +2336,91 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         await expect(session.page.getByTestId('manga-source')).toHaveText('Source: Fake Dex (EN)');
         await expect(session.page.getByRole('button', { name: 'LINK SOURCE' })).toHaveCount(0);
+    });
+
+    test('opens the latest listing of an installed source when clicking its source on a library manga page', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const sourceRow = session.page.getByTestId('manga-source');
+        await expect(sourceRow).toHaveText('Source: Fake Dex (EN)');
+        const sourceButton = sourceRow.getByRole('button', { name: 'Open latest from Fake Dex (EN)' });
+        await expect(sourceButton).toHaveAttribute('title', 'Open latest from Fake Dex (EN)');
+        await sourceButton.click();
+        await expect(session.page.getByRole('heading', { name: 'Fake Dex' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'LATEST' })).toHaveAttribute('aria-current', 'page');
+        await expect(session.page.getByText('Results: 2')).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toBeVisible();
+        const latestRequests = fake.graphqlRequests('fetchSourceManga').filter((request) => {
+            return request.variables?.['source'] === SOURCE_ID && request.variables?.['type'] === 'LATEST';
+        });
+        expect(latestRequests).toHaveLength(1);
+    });
+
+    test('falls back to popular when clicking a library manga source that does not support latest', async () => {
+        fake.supportsLatest = false;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const sourceButton = session.page.getByTestId('manga-source').getByRole('button', { name: 'Open Fake Dex (EN)' });
+        await expect(sourceButton).toHaveAttribute('title', 'Open Fake Dex (EN)');
+        await sourceButton.click();
+        await expect(session.page.getByRole('heading', { name: 'Fake Dex' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'POPULAR' })).toHaveAttribute('aria-current', 'page');
+        await expect(session.page.getByRole('button', { name: 'LATEST' })).toHaveCount(0);
+    });
+
+    test('filters library mangas by categories with OR/AND and resets the filter', async () => {
+        fake.genresById.set(7, ['Comedy', 'Romance', 'School Life', 'Shounen']);
+        fake.genresById.set(8, ['Action', 'Shounen']);
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(2);
+        await expect(session.page.getByRole('button', { name: 'Reset category filter' })).toHaveCount(0);
+
+        await session.page.getByRole('button', { name: 'CATEGORIES' }).click();
+        const dialog = session.page.getByRole('dialog', { name: 'Filter by categories' });
+        await expect(dialog.getByRole('button', { name: 'Comedy' })).toBeVisible();
+        await expect(dialog.getByRole('button', { name: 'Action' })).toBeVisible();
+        await dialog.getByRole('button', { name: 'Comedy' }).click();
+        await dialog.getByRole('button', { name: 'APPLY' }).click();
+
+        await expect(dialog).toHaveCount(0);
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'One Piece' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Reset category filter' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'CATEGORIES (1)' })).toBeVisible();
+
+        await session.page.getByRole('button', { name: 'CATEGORIES (1)' }).click();
+        await dialog.getByRole('button', { name: 'Action' }).click();
+        await dialog.getByRole('button', { name: 'APPLY' }).click();
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(2);
+        await expect(session.page.getByRole('button', { name: 'CATEGORIES (2)' })).toBeVisible();
+
+        await session.page.getByRole('button', { name: 'CATEGORIES (2)' }).click();
+        await dialog.getByRole('button', { name: 'Action' }).click();
+        await dialog.getByRole('button', { name: 'Romance' }).click();
+        await dialog.getByRole('button', { name: 'AND (all)' }).click();
+        await dialog.getByRole('button', { name: 'APPLY' }).click();
+
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'One Piece' })).toBeVisible();
+
+        await session.page.getByRole('button', { name: 'Reset category filter' }).click();
+        await expect(session.page.getByRole('button', { name: 'Reset category filter' })).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'CATEGORIES' })).toBeVisible();
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(2);
     });
 
     test('pauses everything at once and goes on with everything', async () => {

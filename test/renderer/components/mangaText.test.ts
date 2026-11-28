@@ -30,6 +30,12 @@ import {
     newChapterCount,
     matchesSearch,
     matchesManga,
+    foldedGenreKey,
+    foldedGenreKeySet,
+    availableGenres,
+    activeLibraryGenres,
+    matchesMangaGenres,
+    filterGroupsByGenres,
     searchMatchesByTab,
     readerChapters,
     compareChaptersAscending,
@@ -1201,5 +1207,60 @@ describe('mangaText time zone helpers', () => {
         expect(isNewChapter(chapter, now, 'Asia/Tokyo')).toBe(false);
         expect(newChapterCount([manga], now, 'UTC')).toBe(1);
         expect(newChapterCount([manga], now, 'Asia/Tokyo')).toBe(0);
+    });
+});
+
+describe('mangaText category filter helpers', () => {
+    it('folds genre keys and builds key sets ignoring case, accents and outer whitespace', () => {
+        expect(foldedGenreKey('  Shōnen  ')).toBe('shonen');
+        expect(foldedGenreKey('Slice of Life')).toBe('slice of life');
+        expect(foldedGenreKey('   ')).toBe('');
+        expect([...foldedGenreKeySet(['  Shōnen ', 'shonen', '', '  ', 'Comedy'])]).toEqual(['shonen', 'comedy']);
+    });
+
+    it('collects unique sorted genres across mangas ignoring empty values, empty lists, and case or accent duplicates', () => {
+        const mangas = [
+            makeLibraryManga([], { id: 1, genres: ['Slice of Life', 'Comedy', '  Romance  ', '', 'Shōnen'] }),
+            makeLibraryManga([], { id: 2, genres: ['romance', 'Action', '   ', 'Shonen'] }),
+            makeLibraryManga([], { id: 3, genres: [] })
+        ];
+        expect(availableGenres(mangas)).toEqual(['Action', 'Comedy', 'Romance', 'Shōnen', 'Slice of Life']);
+        expect(availableGenres([])).toEqual([]);
+    });
+
+    it('keeps only active genres that still exist using canonical spelling from available without duplicates', () => {
+        expect(activeLibraryGenres(['comedy', 'Horror', 'COMEDY', '  ', 'shonen'], ['Romance', 'Comedy', 'Shōnen', '  '])).toEqual(['Comedy', 'Shōnen']);
+        expect(activeLibraryGenres([], ['Action'])).toEqual([]);
+        expect(activeLibraryGenres(['Action'], [])).toEqual([]);
+    });
+
+    it('matches an individual manga using OR and AND modes case- and accent-insensitively', () => {
+        const manga = makeLibraryManga([], { genres: ['Comedy', 'Romance', 'School Life', 'Shōnen', 'Slice of Life'] });
+        const empty = makeLibraryManga([], { genres: [] });
+        expect(matchesMangaGenres(manga, [], 'or')).toBe(true);
+        expect(matchesMangaGenres(manga, ['   '], 'and')).toBe(true);
+        expect(matchesMangaGenres(empty, [], 'or')).toBe(true);
+        expect(matchesMangaGenres(empty, ['Action'], 'or')).toBe(false);
+        expect(matchesMangaGenres(empty, ['Action'], 'and')).toBe(false);
+        expect(matchesMangaGenres(manga, ['romance', 'Horror'], 'or')).toBe(true);
+        expect(matchesMangaGenres(manga, ['Horror', 'Action'], 'or')).toBe(false);
+        expect(matchesMangaGenres(manga, ['comedy', 'shonen', 'Comedy'], 'and')).toBe(true);
+        expect(matchesMangaGenres(manga, ['comedy', 'Horror'], 'and')).toBe(false);
+    });
+
+    it('filters groups by checking each manga individually and keeping the whole series if at least one matches', () => {
+        const s1 = makeLibraryManga([], { id: 1, title: 'Days S1', series: 'Days', season: 1, genres: ['Comedy', 'Romance'] });
+        const s2 = makeLibraryManga([], { id: 2, title: 'Days S2', series: 'Days', season: 2, genres: ['Comedy', 'Drama'] });
+        const solo = makeLibraryManga([], { id: 3, title: 'Bleach', genres: ['Action', 'Shounen'] });
+        const groups = groupLibrary([s1, s2, solo]);
+
+        expect(filterGroupsByGenres(groups, [], 'or')).toBe(groups);
+        expect(filterGroupsByGenres([], ['Action'], 'or')).toEqual([]);
+        expect(filterGroupsByGenres(groups, ['Horror'], 'or')).toEqual([]);
+        expect(filterGroupsByGenres(groups, ['Romance'], 'or')).toEqual([groups[1]]);
+        expect(filterGroupsByGenres(groups, ['Comedy', 'Romance'], 'and')).toEqual([groups[1]]);
+        expect(filterGroupsByGenres(groups, ['Comedy', 'Romance'], 'and')[0]?.entries).toEqual([s1, s2]);
+        expect(filterGroupsByGenres(groups, ['Romance', 'Drama'], 'and')).toEqual([]);
+        expect(filterGroupsByGenres(groups, ['Romance', 'Action'], 'or')).toEqual(groups);
     });
 });

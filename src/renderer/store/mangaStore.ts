@@ -42,7 +42,7 @@ import type {
     MangaSummary
 } from '@shared/manga';
 import { resolveAppLanguage, systemLocale } from '../i18n/language';
-import { adjacentSeason, ALL_LANGUAGES, chapterMovesByNumber, chapterState, downloadablePicks, libraryChapterIds, libraryEntry, listedSources, localDetails, readerChapters, resolveMangaLanguage, withLibraryChapters, type ExtensionFilter } from '../components/mangaText';
+import { activeGroup, adjacentSeason, ALL_LANGUAGES, chapterMovesByNumber, chapterState, downloadablePicks, libraryChapterIds, libraryEntry, listedSources, localDetails, readerChapters, resolveMangaLanguage, withLibraryChapters, type ExtensionFilter, type LibraryGenreMode } from '../components/mangaText';
 import { activateFilter, type TermKind } from '../components/mangaFilterSearch';
 import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources, sourceLanguages } from '../components/mangaSearchSources';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
@@ -175,6 +175,7 @@ export interface MangaReaderState {
 }
 
 const EMPTY_SEARCH: MangaSearchState = { query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false };
+const EMPTY_LIBRARY_GENRES: { libraryGenres: string[]; libraryGenreMode: LibraryGenreMode } = { libraryGenres: [], libraryGenreMode: 'or' };
 
 let searchRun = 0;
 
@@ -189,6 +190,8 @@ interface MangaState {
     library: LibraryManga[];
     groups: MangaGroup[];
     libraryGroup: number | null;
+    libraryGenres: string[];
+    libraryGenreMode: LibraryGenreMode;
     librarySeries: string | null;
     jobs: MangaJob[];
     queueHeld: boolean;
@@ -245,6 +248,7 @@ interface MangaState {
     setSearchQuery: (query: string) => void;
     runSearch: () => Promise<void>;
     openSource: (sourceId: string, mode?: MangaListKind) => void;
+    openSourceLatest: (sourceId: string) => void;
     closeSource: () => void;
     openSourceSettings: () => Promise<void>;
     closeSourceSettings: () => void;
@@ -279,6 +283,8 @@ interface MangaState {
     openSeries: (key: string) => void;
     closeSeries: () => void;
     setLibraryGroup: (groupId: number | null) => void;
+    setLibraryGenres: (genres: string[], mode: LibraryGenreMode) => void;
+    clearLibraryGenres: () => void;
     setSeries: (request: MangaSeriesRequest) => Promise<MangaSeriesResponse>;
     renameSeries: (mangaIds: number[], series: string) => Promise<MangaRenameSeriesResponse>;
     createGroup: (name: string) => Promise<MangaGroupResponse>;
@@ -507,6 +513,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
         library: [],
         groups: [],
         libraryGroup: null,
+        libraryGenres: [],
+        libraryGenreMode: 'or',
         librarySeries: null,
         jobs: [],
         queueHeld: false,
@@ -972,6 +980,20 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set({ sourceSettings: EMPTY_SOURCE_SETTINGS, selection: null });
         },
 
+        openSourceLatest: (sourceId) => {
+            const source = get().browse.sources.find((candidate) => {
+                return candidate.id === sourceId;
+            });
+            if (source === undefined) {
+                return;
+            }
+            const mode: MangaListKind = source.supportsLatest ? 'latest' : 'popular';
+            batchNavigation(() => {
+                set({ view: 'browse', selectionRefresh: { loading: false, error: null } });
+                get().openSource(source.id, mode);
+            });
+        },
+
         closeSource: () => {
             patchBrowse({ sourceId: null, query: '', filters: [], initialFilters: [], filtersStatus: 'idle', filtersOpen: false, status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
             set({ sourceSettings: EMPTY_SOURCE_SETTINGS });
@@ -1351,8 +1373,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 const stillThere = state.libraryGroup === null || groups.some((group) => {
                     return group.id === state.libraryGroup;
                 });
+                const nextLibraryGroup = stillThere ? state.libraryGroup : null;
+                const previousEffective = activeGroup(state.library, state.groups, state.libraryGroup);
+                const nextEffective = activeGroup(library, groups, nextLibraryGroup);
+                const groupReset = previousEffective === nextEffective ? {} : EMPTY_LIBRARY_GENRES;
                 if (state.history.length === 0) {
-                    return { library, groups, libraryGroup: stillThere ? state.libraryGroup : null };
+                    return { library, groups, libraryGroup: nextLibraryGroup, ...groupReset };
                 }
                 const libraryIdByKey = new Map<string, number>();
                 library.forEach((manga) => {
@@ -1367,7 +1393,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     historyChanged = true;
                     return { ...entry, libraryMangaId: nextId };
                 });
-                return { library, groups, libraryGroup: stillThere ? state.libraryGroup : null, history: historyChanged ? history : state.history };
+                return { library, groups, libraryGroup: nextLibraryGroup, ...groupReset, history: historyChanged ? history : state.history };
             });
         },
 
@@ -1377,7 +1403,14 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 const stillThere = state.libraryGroup === null || groups.some((group) => {
                     return group.id === state.libraryGroup;
                 });
-                return { groups, libraryGroup: stillThere ? state.libraryGroup : null };
+                const nextLibraryGroup = stillThere ? state.libraryGroup : null;
+                const previousEffective = activeGroup(state.library, state.groups, state.libraryGroup);
+                const nextEffective = activeGroup(state.library, groups, nextLibraryGroup);
+                return {
+                    groups,
+                    libraryGroup: nextLibraryGroup,
+                    ...(previousEffective === nextEffective ? {} : EMPTY_LIBRARY_GENRES)
+                };
             });
         },
 
@@ -1390,7 +1423,26 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setLibraryGroup: (groupId) => {
-            set({ libraryGroup: groupId, librarySeries: null });
+            set((state) => {
+                const switched = activeGroup(state.library, state.groups, state.libraryGroup) !== activeGroup(state.library, state.groups, groupId);
+                return {
+                    libraryGroup: groupId,
+                    librarySeries: null,
+                    ...(switched ? EMPTY_LIBRARY_GENRES : {})
+                };
+            });
+        },
+
+        setLibraryGenres: (genres, mode) => {
+            if (genres.length === 0) {
+                set(EMPTY_LIBRARY_GENRES);
+                return;
+            }
+            set({ libraryGenres: [...genres], libraryGenreMode: mode });
+        },
+
+        clearLibraryGenres: () => {
+            set(EMPTY_LIBRARY_GENRES);
         },
 
         setSeries: async (request) => {

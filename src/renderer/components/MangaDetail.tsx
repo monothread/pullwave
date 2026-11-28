@@ -105,6 +105,9 @@ export function MangaDetail() {
     const showInSource = useMangaStore((state) => {
         return state.showInSource;
     });
+    const openSourceLatest = useMangaStore((state) => {
+        return state.openSourceLatest;
+    });
     const openFolder = useMangaStore((state) => {
         return state.openFolder;
     });
@@ -205,6 +208,11 @@ export function MangaDetail() {
     const currentSource = sources.find((source) => {
         return source.id === manga.sourceId;
     });
+    const sourceDisplay = currentSource === undefined ? '' : `${currentSource.name} (${currentSource.lang.toUpperCase()})`;
+    const sourceActionLabel =
+        currentSource === undefined
+            ? ''
+            : t(currentSource.supportsLatest ? 'manga.detail.openSourceLatest' : 'manga.detail.openSource', { name: sourceDisplay });
     const sourceGone = sourceIsMissing(sources, sourcesStatus, manga.sourceId);
     const inLibraryPage = selectionFrom === 'library';
     const saved = libraryEntry(library, manga.sourceId, manga.remoteId);
@@ -291,7 +299,18 @@ export function MangaDetail() {
                     )}
                     {inLibraryPage && saved && currentSource !== undefined && (
                         <span className="history__meta" data-testid="manga-source">
-                            {t('manga.detail.source', { name: currentSource.name, language: currentSource.lang.toUpperCase() })}
+                            {`${t('manga.detail.sourceLabel')}: `}
+                            <button
+                                type="button"
+                                className="manga__tag"
+                                aria-label={sourceActionLabel}
+                                title={sourceActionLabel}
+                                onClick={() => {
+                                    openSourceLatest(currentSource.id);
+                                }}
+                            >
+                                {sourceDisplay}
+                            </button>
                         </span>
                     )}
                     {inLibraryPage && saved && sourceGone && (

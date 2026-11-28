@@ -992,3 +992,310 @@ describe('MangaLibrary new chapter badges with configured time zone', () => {
         }
     });
 });
+
+describe('MangaLibrary filtering by categories', () => {
+    const DAYS = makeLibraryManga([], {
+        id: 1,
+        remoteId: 1,
+        title: 'Days with my Stepsister',
+        genres: ['Comedy', 'Romance', 'School Life', 'Shounen', 'Slice of Life']
+    });
+    const ONE_PIECE_GENRES = makeLibraryManga([], {
+        id: 2,
+        remoteId: 2,
+        title: 'One Piece',
+        genres: ['Action', 'Adventure', 'Shounen']
+    });
+    const BERSERK = makeLibraryManga([], {
+        id: 3,
+        remoteId: 3,
+        title: 'Berserk',
+        genres: ['Action', 'Drama']
+    });
+
+    function cardTitles(): string[] {
+        return [...screen.queryAllByTestId('manga-entry'), ...screen.queryAllByTestId('manga-series')]
+            .map((card) => {
+                return within(card).getByRole('heading').textContent ?? '';
+            })
+            .sort();
+    }
+
+    function dialogCategories(dialog: HTMLElement): Array<string | null> {
+        return within(within(dialog).getByRole('list', { name: 'Available categories' }))
+            .getAllByRole('button')
+            .map((button) => {
+                return button.textContent;
+            });
+    }
+
+    it('places the categories button to the left of Sort by, disables it when no categories exist, and hides Reset while inactive', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([], { id: 1, title: 'No Genres', genres: [] })] });
+        render(<MangaLibrary />);
+        const filterButton = screen.getByRole('button', { name: 'CATEGORIES' });
+        const sortLabel = screen.getByRole('combobox', { name: 'Sort by' }).closest('label');
+        expect(filterButton.nextElementSibling).toBe(sortLabel);
+        expect(filterButton).toHaveAttribute('aria-haspopup', 'dialog');
+        expect(filterButton).toBeDisabled();
+        expect(filterButton).toHaveAttribute('title', 'No categories available in the library.');
+        expect(screen.queryByRole('button', { name: 'Reset category filter' })).not.toBeInTheDocument();
+    });
+
+    it('filters by one or more categories using OR and AND, shows Reset to the left of the filter button, and clears and restores focus on Reset', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [DAYS, ONE_PIECE_GENRES, BERSERK] });
+        render(<MangaLibrary />);
+
+        const initialFilterButton = screen.getByRole('button', { name: 'CATEGORIES' });
+        expect(initialFilterButton).toHaveAttribute('title', 'Filter by categories');
+        expect(screen.queryByRole('button', { name: 'Reset category filter' })).not.toBeInTheDocument();
+        await user.click(initialFilterButton);
+
+        const dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        expect(dialogCategories(dialog)).toEqual(['Action', 'Adventure', 'Comedy', 'Drama', 'Romance', 'School Life', 'Shounen', 'Slice of Life']);
+
+        await user.click(within(dialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Drama' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APPLY' }));
+
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(cardTitles()).toEqual(['Berserk', 'Days with my Stepsister']);
+
+        const activeButton = screen.getByRole('button', { name: 'CATEGORIES (2)' });
+        const resetButton = screen.getByRole('button', { name: 'Reset category filter' });
+        expect(resetButton).toHaveTextContent('RESET');
+        expect(resetButton).toHaveAttribute('title', 'Reset category filter');
+        expect(resetButton.nextElementSibling).toBe(activeButton);
+        expect(activeButton).toHaveClass('btn--primary');
+        expect(activeButton).toHaveAttribute('title', 'OR (any): Romance, Drama');
+
+        await user.click(activeButton);
+        const secondDialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(secondDialog).getByRole('button', { name: 'AND (all)' }));
+        await user.click(within(secondDialog).getByRole('button', { name: 'APPLY' }));
+
+        expect(cardTitles()).toEqual([]);
+        expect(screen.getByText('// NO MANGA MATCHES THE SELECTED CATEGORIES.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'CATEGORIES (2)' })).toHaveAttribute('title', 'AND (all): Romance, Drama');
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES (2)' }));
+        const thirdDialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(thirdDialog).getByRole('button', { name: 'Drama' }));
+        await user.click(within(thirdDialog).getByRole('button', { name: 'Comedy' }));
+        await user.click(within(thirdDialog).getByRole('button', { name: 'APPLY' }));
+        expect(cardTitles()).toEqual(['Days with my Stepsister']);
+
+        await user.click(screen.getByRole('button', { name: 'Reset category filter' }));
+        expect(screen.queryByRole('button', { name: 'Reset category filter' })).not.toBeInTheDocument();
+        const restoredButton = screen.getByRole('button', { name: 'CATEGORIES' });
+        expect(restoredButton).not.toHaveClass('btn--primary');
+        expect(document.activeElement).toBe(restoredButton);
+        expect(cardTitles()).toEqual(['Berserk', 'Days with my Stepsister', 'One Piece']);
+    });
+
+    it('hides the spotlight while a category filter is active and restores it when reset or cleared in the dialog', async () => {
+        const user = userEvent.setup();
+        const recentDays = makeLibraryManga([makeChapterRecord({ id: 1, addedAt: Date.now() - 1000 })], {
+            id: 1,
+            remoteId: 1,
+            title: 'Days with my Stepsister',
+            genres: ['Comedy', 'Romance']
+        });
+        useMangaStore.setState({
+            library: [recentDays, ONE_PIECE_GENRES],
+            history: [makeReading({ id: 1, libraryMangaId: recentDays.id, mangaRemoteId: recentDays.remoteId, title: recentDays.title })]
+        });
+        render(<MangaLibrary />);
+        expect(screen.getByRole('region', { name: 'Highlights of the library' })).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        const dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(dialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(dialog).getByRole('button', { name: 'CANCEL' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Highlights of the library' })).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        const secondDialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(secondDialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(secondDialog).getByRole('button', { name: 'APPLY' }));
+        expect(screen.queryByRole('region', { name: 'Highlights of the library' })).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES (1)' }));
+        const thirdDialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(thirdDialog).getByRole('button', { name: 'CLEAR' }));
+        await user.click(within(thirdDialog).getByRole('button', { name: 'APPLY' }));
+        expect(screen.queryByRole('button', { name: 'Reset category filter' })).not.toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Highlights of the library' })).toBeInTheDocument();
+        expect(cardTitles()).toEqual(['Days with my Stepsister', 'One Piece']);
+    });
+
+    it('combines category filtering with text search and NEW chip counts and empty states', async () => {
+        const user = userEvent.setup();
+        const now = Date.now();
+        const recentDays = makeLibraryManga([makeChapterRecord({ id: 1, addedAt: now - 1000 })], {
+            id: 1,
+            remoteId: 1,
+            title: 'Days with my Stepsister',
+            genres: ['Comedy', 'Romance']
+        });
+        const oldPiece = makeLibraryManga([], {
+            id: 2,
+            remoteId: 2,
+            title: 'One Piece',
+            genres: ['Action', 'Comedy']
+        });
+        useMangaStore.setState({ library: [recentDays, oldPiece] });
+        render(<MangaLibrary />);
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        const dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(dialog).getByRole('button', { name: 'Action' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APPLY' }));
+
+        expect(screen.getByRole('button', { name: 'ALL (1)' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'NEW (0)' })).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'NEW (0)' }));
+        expect(screen.getByText('Nothing new in the last 7 days.')).toBeInTheDocument();
+        expect(screen.queryByText('// NO MANGA MATCHES THE SELECTED CATEGORIES.')).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'ALL (1)' }));
+        const searchBox = screen.getByRole('textbox', { name: 'Search the library' });
+        await user.type(searchBox, 'Days');
+        expect(screen.getByText('// NO MANGA MATCHES THE SELECTED CATEGORIES.')).toBeInTheDocument();
+
+        await user.clear(searchBox);
+        await user.type(searchBox, 'Zzzzz');
+        expect(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
+        expect(screen.queryByText('// NO MANGA MATCHES THE SELECTED CATEGORIES.')).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES (1)' }));
+        expect(dialogCategories(screen.getByRole('dialog', { name: 'Filter by categories' }))).toEqual(['Action', 'Comedy', 'Romance']);
+    });
+
+    it('lists only categories from the selected group tab, disables on empty group, and resets when switching group tabs', async () => {
+        const user = userEvent.setup();
+        const mangaA = makeLibraryManga([], { id: 1, remoteId: 1, title: 'Manga A', genres: ['Romance', 'Comedy'], groupIds: [1] });
+        const mangaB = makeLibraryManga([], { id: 2, remoteId: 2, title: 'Manga B', genres: ['Action', 'Sci-Fi'], groupIds: [2] });
+        useMangaStore.setState({
+            library: [mangaA, mangaB],
+            groups: [
+                { id: 1, name: 'Romcoms' },
+                { id: 2, name: 'Shonen' },
+                { id: 3, name: 'Empty' }
+            ],
+            libraryGroup: 1
+        });
+        render(<MangaLibrary />);
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        let dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        expect(dialogCategories(dialog)).toEqual(['Comedy', 'Romance']);
+        await user.click(within(dialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APPLY' }));
+        expect(screen.getByRole('button', { name: 'Reset category filter' })).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'Romcoms' }));
+        expect(screen.getByRole('button', { name: 'Reset category filter' })).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'Shonen' }));
+        expect(screen.queryByRole('button', { name: 'Reset category filter' })).not.toBeInTheDocument();
+        expect(cardTitles()).toEqual(['Manga B']);
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        expect(dialogCategories(dialog)).toEqual(['Action', 'Sci-Fi']);
+        await user.click(within(dialog).getByRole('button', { name: 'CANCEL' }));
+
+        await user.click(screen.getByRole('button', { name: 'Empty' }));
+        const disabledButton = screen.getByRole('button', { name: 'CATEGORIES' });
+        expect(disabledButton).toBeDisabled();
+        expect(disabledButton).toHaveAttribute('title', 'No categories available in this group.');
+    });
+
+    it('prunes stale categories from store when mangas are removed or hidden by adult filter without silently re-activating', async () => {
+        const user = userEvent.setup();
+        const adultSource = makeSource({ id: '999', name: 'Adult Site', contentWarning: 'NSFW' });
+        const nsfwManga = makeLibraryManga([], { id: 10, remoteId: 10, sourceId: '999', title: 'Hidden Title', genres: ['Mature'] });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        useMangaStore.setState({
+            library: [DAYS, nsfwManga],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: '123' }), adultSource], sourcesStatus: 'ready' }
+        });
+        render(<MangaLibrary />);
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        const dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(dialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Mature' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APPLY' }));
+        expect(screen.getByRole('button', { name: 'CATEGORIES (2)' })).toBeInTheDocument();
+
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: false } });
+        });
+        expect(screen.getByRole('button', { name: 'CATEGORIES (1)' })).toBeInTheDocument();
+        expect(useMangaStore.getState().libraryGenres).toEqual(['Romance']);
+
+        act(() => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        });
+        expect(screen.getByRole('button', { name: 'CATEGORIES (1)' })).toBeInTheDocument();
+        expect(cardTitles()).toEqual(['Days with my Stepsister']);
+
+        act(() => {
+            useMangaStore.setState({ library: [ONE_PIECE_GENRES] });
+        });
+        expect(screen.queryByRole('button', { name: 'Reset category filter' })).not.toBeInTheDocument();
+        expect(useMangaStore.getState()).toMatchObject({ libraryGenres: [], libraryGenreMode: 'or' });
+        expect(cardTitles()).toEqual(['One Piece']);
+    });
+
+    it('evaluates each manga in a series individually and shows the entire series when at least one matches', async () => {
+        const user = userEvent.setup();
+        const season1 = makeLibraryManga([], { id: 1, remoteId: 1, title: 'Days S1', series: 'Days', season: 1, genres: ['Comedy', 'Romance'] });
+        const season2 = makeLibraryManga([], { id: 2, remoteId: 2, title: 'Days S2', series: 'Days', season: 2, genres: ['Comedy', 'Drama'] });
+        const other = makeLibraryManga([], { id: 3, remoteId: 3, title: 'Bleach', genres: ['Action'] });
+        useMangaStore.setState({ library: [season1, season2, other] });
+        render(<MangaLibrary />);
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES' }));
+        let dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(dialog).getByRole('button', { name: 'Comedy' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(dialog).getByRole('button', { name: 'AND (all)' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APPLY' }));
+
+        expect(cardTitles()).toEqual(['Days']);
+        expect(within(screen.getByTestId('manga-series')).getByText('2 SEASONS')).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIES (2)' }));
+        dialog = screen.getByRole('dialog', { name: 'Filter by categories' });
+        await user.click(within(dialog).getByRole('button', { name: 'Comedy' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Drama' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APPLY' }));
+
+        expect(cardTitles()).toEqual([]);
+        expect(screen.getByText('// NO MANGA MATCHES THE SELECTED CATEGORIES.')).toBeInTheDocument();
+    });
+
+    it('keeps the category filter active across remounts and translates labels in Portuguese', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
+        useMangaStore.setState({ library: [DAYS, ONE_PIECE_GENRES] });
+        const { unmount } = render(<MangaLibrary />);
+
+        await user.click(screen.getByRole('button', { name: 'CATEGORIAS' }));
+        const dialog = screen.getByRole('dialog', { name: 'Filtrar por categorias' });
+        await user.click(within(dialog).getByRole('button', { name: 'Romance' }));
+        await user.click(within(dialog).getByRole('button', { name: 'APLICAR' }));
+        expect(cardTitles()).toEqual(['Days with my Stepsister']);
+        expect(screen.getByRole('button', { name: 'Redefinir filtro de categorias' })).toHaveTextContent('REDEFINIR');
+        expect(screen.getByRole('button', { name: 'CATEGORIAS (1)' })).toBeInTheDocument();
+
+        unmount();
+        render(<MangaLibrary />);
+        expect(cardTitles()).toEqual(['Days with my Stepsister']);
+        expect(screen.getByRole('button', { name: 'Redefinir filtro de categorias' })).toBeInTheDocument();
+    });
+});

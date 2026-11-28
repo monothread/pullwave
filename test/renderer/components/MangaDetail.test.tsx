@@ -586,20 +586,93 @@ describe('MangaDetail in the library page', () => {
     });
 
     it('shows the source the manga comes from, with its language, on its page in the library', () => {
-        useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'en' })], sourcesStatus: 'ready' } });
+        useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'en', supportsLatest: true })], sourcesStatus: 'ready' } });
         open();
         render(<MangaDetail />);
-        expect(screen.getByTestId('manga-source')).toHaveTextContent('Source: MangaDex (EN)');
+        const sourceRow = screen.getByTestId('manga-source');
+        expect(sourceRow).toHaveTextContent('Source: MangaDex (EN)');
+        const button = within(sourceRow).getByRole('button', { name: 'Open latest from MangaDex (EN)' });
+        expect(button).toHaveClass('manga__tag');
+        expect(button).toHaveAttribute('title', 'Open latest from MangaDex (EN)');
+        expect(button).toHaveTextContent('MangaDex (EN)');
         expect(screen.queryByTestId('manga-source-gone')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'LINK SOURCE' })).not.toBeInTheDocument();
     });
 
-    it('does not show the source on the page of the browse', () => {
-        useMangaStore.setState({ library: [SAVED], selectionFrom: 'browse', view: 'browse', browse: { ...initialManga.browse, sources: [makeSource({ id: '123' })], sourcesStatus: 'ready' } });
+    it('redirects to the latest listing of the source when clicking on it', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            library: [SAVED],
+            selectionRefresh: { loading: true, error: null },
+            browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'en', supportsLatest: true })], sourcesStatus: 'ready' }
+        });
         open();
         render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Open latest from MangaDex (EN)' }));
+        expect(useMangaStore.getState().view).toBe('browse');
+        expect(useMangaStore.getState().selection).toBeNull();
+        expect(useMangaStore.getState().selectionRefresh).toEqual({ loading: false, error: null });
+        expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'latest', status: 'idle' });
+    });
+
+    it('falls back to popular when clicking a source that does not support latest', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            library: [SAVED],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'en', supportsLatest: false })], sourcesStatus: 'ready' }
+        });
+        open();
+        render(<MangaDetail />);
+        const button = screen.getByRole('button', { name: 'Open MangaDex (EN)' });
+        expect(button).toHaveAttribute('title', 'Open MangaDex (EN)');
+        await user.click(button);
+        expect(useMangaStore.getState().view).toBe('browse');
+        expect(useMangaStore.getState().selection).toBeNull();
+        expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'popular', status: 'idle' });
+    });
+
+    it('shows the clickable source label and tooltip in Portuguese', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
+        useMangaStore.setState({
+            library: [SAVED],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'pt', supportsLatest: true })], sourcesStatus: 'ready' }
+        });
+        open();
+        const { rerender } = render(<MangaDetail />);
+        expect(screen.getByTestId('manga-source')).toHaveTextContent('Fonte: MangaDex (PT)');
+        expect(screen.getByRole('button', { name: 'Abrir recentes de MangaDex (PT)' })).toHaveAttribute('title', 'Abrir recentes de MangaDex (PT)');
+        act(() => {
+            useMangaStore.setState({
+                browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'pt', supportsLatest: false })], sourcesStatus: 'ready' }
+            });
+        });
+        rerender(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'Abrir MangaDex (PT)' })).toHaveAttribute('title', 'Abrir MangaDex (PT)');
+    });
+
+    it('does not show the source on the page of the browse, search, unsaved manga, or local source', () => {
+        useMangaStore.setState({ library: [SAVED], selectionFrom: 'browse', view: 'browse', browse: { ...initialManga.browse, sources: [makeSource({ id: '123' })], sourcesStatus: 'ready' } });
+        open();
+        const { rerender } = render(<MangaDetail />);
         expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'LINK SOURCE' })).not.toBeInTheDocument();
+        act(() => {
+            useMangaStore.setState({ selectionFrom: 'search', view: 'search' });
+        });
+        rerender(<MangaDetail />);
+        expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
+        act(() => {
+            useMangaStore.setState({ selectionFrom: 'library', view: 'library', library: [] });
+        });
+        rerender(<MangaDetail />);
+        expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
+        act(() => {
+            useMangaStore.setState({ library: [makeLibraryManga([], { id: 9, sourceId: '0', remoteId: 7 })] });
+            open({ manga: makeSummary({ sourceId: '0' }), details: makeDetails({ sourceId: '0' }) });
+        });
+        rerender(<MangaDetail />);
+        expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('manga-source-gone')).not.toBeInTheDocument();
     });
 
     it('says the extension is gone and offers LINK SOURCE, which opens the window to move the manga to a source that works', async () => {

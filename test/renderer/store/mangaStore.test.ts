@@ -1103,6 +1103,61 @@ describe('mangaStore opening a manga', () => {
         expect(state().selection?.status).toBe('ready');
     });
 
+    it('opens the latest listing of an installed source in browse and clears the open manga', () => {
+        useMangaStore.setState({
+            view: 'library',
+            selectionFrom: 'library',
+            selection: { manga: makeSummary({ sourceId: '55' }), status: 'ready', details: null, chapters: [], selected: [], error: null },
+            selectionRefresh: { loading: true, error: { code: 'REQUEST_FAILED', message: 'offline' } },
+            sourceSettings: { open: true, status: 'ready', preferences: [], error: null, saving: false },
+            browse: {
+                ...initialManga.browse,
+                sources: [makeSource({ id: '55', name: 'Source 55', supportsLatest: true })],
+                sourcesStatus: 'ready',
+                sourceId: '99',
+                mode: 'search',
+                query: 'old',
+                status: 'done',
+                items: [makeSummary()],
+                page: 2,
+                hasNextPage: true
+            }
+        });
+        state().openSourceLatest('55');
+        expect(state().view).toBe('browse');
+        expect(state().selection).toBeNull();
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+        expect(state().sourceSettings.open).toBe(false);
+        expect(state().browse).toMatchObject({ sourceId: '55', mode: 'latest', query: '', status: 'idle', items: [], page: 1, hasNextPage: false, error: null });
+    });
+
+    it('falls back to the popular listing when the installed source does not support latest', () => {
+        useMangaStore.setState({
+            view: 'library',
+            selectionFrom: 'library',
+            selection: { manga: makeSummary({ sourceId: '55' }), status: 'ready', details: null, chapters: [], selected: [], error: null },
+            browse: { ...initialManga.browse, sources: [makeSource({ id: '55', supportsLatest: false })], sourcesStatus: 'ready' }
+        });
+        state().openSourceLatest('55');
+        expect(state().view).toBe('browse');
+        expect(state().selection).toBeNull();
+        expect(state().browse).toMatchObject({ sourceId: '55', mode: 'popular', status: 'idle' });
+    });
+
+    it('does nothing when opening the latest listing of a source that is not installed', () => {
+        const currentSelection = { manga: makeSummary({ sourceId: '55' }), status: 'ready' as const, details: null, chapters: [], selected: [], error: null };
+        useMangaStore.setState({
+            view: 'library',
+            selectionFrom: 'library',
+            selection: currentSelection,
+            browse: { ...initialManga.browse, sources: [makeSource({ id: '99' })], sourcesStatus: 'ready' }
+        });
+        state().openSourceLatest('55');
+        expect(state().view).toBe('library');
+        expect(state().selection).toEqual(currentSelection);
+        expect(state().browse.sourceId).toBeNull();
+    });
+
     it('does not search by a term that is empty', async () => {
         useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
         await state().searchByTerm('   ');
@@ -1890,6 +1945,92 @@ describe('mangaStore series, groups and the move to another source', () => {
         expect(state()).toMatchObject({ libraryGroup: 2, librarySeries: null });
         state().setLibraryGroup(null);
         expect(state().libraryGroup).toBeNull();
+    });
+
+    it('stores and clears library category filters, and resets them when switching or losing the effective active group', async () => {
+        expect(state()).toMatchObject({ libraryGenres: [], libraryGenreMode: 'or' });
+        const input = ['Comedy', 'Romance'];
+        state().setLibraryGenres(input, 'and');
+        input.push('Mutated');
+        expect(state()).toMatchObject({ libraryGenres: ['Comedy', 'Romance'], libraryGenreMode: 'and' });
+
+        state().setLibraryGenres([], 'and');
+        expect(state()).toMatchObject({ libraryGenres: [], libraryGenreMode: 'or' });
+
+        state().setLibraryGenres(['Comedy', 'Romance'], 'and');
+        state().setLibraryGroup(null);
+        expect(state()).toMatchObject({ libraryGenres: ['Comedy', 'Romance'], libraryGenreMode: 'and' });
+
+        state().setLibraryGroup(2);
+        expect(state()).toMatchObject({ libraryGroup: 2, libraryGenres: [], libraryGenreMode: 'or' });
+
+        state().setLibraryGenres(['Action'], 'and');
+        state().clearLibraryGenres();
+        expect(state()).toMatchObject({ libraryGenres: [], libraryGenreMode: 'or' });
+
+        const groupedManga = makeLibraryManga([], { id: 1, remoteId: 1, groupIds: [1] });
+        useMangaStore.setState({
+            library: [groupedManga],
+            groups: [
+                { id: 1, name: 'First' },
+                { id: 2, name: 'Second' }
+            ],
+            libraryGroup: null
+        });
+        state().setLibraryGenres(['Romance'], 'and');
+        state().setLibraryGroup(1);
+        expect(state()).toMatchObject({ libraryGroup: 1, libraryGenres: ['Romance'], libraryGenreMode: 'and' });
+
+        mock.api.manga.groups.mockResolvedValue([
+            { id: 1, name: 'First' },
+            { id: 2, name: 'Second' }
+        ]);
+        mock.api.manga.library.mockResolvedValue([groupedManga]);
+        await state().refreshGroups();
+        expect(state()).toMatchObject({ libraryGroup: 1, libraryGenres: ['Romance'], libraryGenreMode: 'and' });
+        await state().refreshLibrary();
+        expect(state()).toMatchObject({ libraryGroup: 1, libraryGenres: ['Romance'], libraryGenreMode: 'and' });
+
+        useMangaStore.setState({ libraryGroup: null });
+        mock.api.manga.groups.mockResolvedValue([
+            { id: 2, name: 'Second' },
+            { id: 1, name: 'First' }
+        ]);
+        await state().refreshGroups();
+        expect(state()).toMatchObject({ libraryGroup: null, libraryGenres: [], libraryGenreMode: 'or' });
+
+        state().setLibraryGroup(2);
+        state().setLibraryGenres(['Drama'], 'and');
+        useMangaStore.setState({
+            history: [
+                {
+                    id: 1,
+                    sourceId: '123',
+                    mangaRemoteId: 1,
+                    title: 'One Piece',
+                    thumbnailUrl: null,
+                    chapterRemoteId: 11,
+                    chapterName: 'Ch 1',
+                    chapterNumber: 1,
+                    page: 0,
+                    pageCount: 10,
+                    readAt: 100,
+                    libraryMangaId: null
+                }
+            ]
+        });
+        mock.api.manga.groups.mockResolvedValue([{ id: 1, name: 'First' }]);
+        mock.api.manga.library.mockResolvedValue([groupedManga]);
+        await state().refreshLibrary();
+        expect(state()).toMatchObject({ libraryGroup: null, libraryGenres: [], libraryGenreMode: 'or' });
+        expect(state().history[0]?.libraryMangaId).toBe(1);
+
+        state().setLibraryGroup(1);
+        state().setLibraryGenres(['Action'], 'and');
+        mock.api.manga.groups.mockResolvedValue([]);
+        mock.api.manga.library.mockResolvedValue([]);
+        await state().deleteGroup(1);
+        expect(state()).toMatchObject({ libraryGroup: null, libraryGenres: [], libraryGenreMode: 'or' });
     });
 
     it('joins a manga to a series and reads the library again, only when it worked', async () => {

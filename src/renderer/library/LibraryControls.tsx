@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { MessageKey } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { LIBRARY_SORTS, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
@@ -10,6 +11,7 @@ interface LibraryControlsProps {
     newsCount: number;
     completeCount?: number;
     ongoingCount?: number;
+    beforeSort?: ReactNode;
     onFilter: (filter: LibraryFilter) => void;
     onSort: (sort: LibrarySort) => void;
 }
@@ -45,7 +47,7 @@ function FilterChip({ filter, current, count, label, hint, onFilter }: FilterChi
     );
 }
 
-export function LibraryControls({ kind, filter, sort, allCount, newsCount, completeCount, ongoingCount, onFilter, onSort }: LibraryControlsProps) {
+export function LibraryControls({ kind, filter, sort, allCount, newsCount, completeCount, ongoingCount, beforeSort, onFilter, onSort }: LibraryControlsProps) {
     const t = useTranslator();
     return (
         <div className="library-controls">
@@ -59,24 +61,27 @@ export function LibraryControls({ kind, filter, sort, allCount, newsCount, compl
                     </>
                 )}
             </div>
-            <label className="library-controls__sort">
-                <span className="field__label">{t('library.sort')}</span>
-                <select
-                    className="input"
-                    value={sort}
-                    onChange={(event) => {
-                        onSort(event.target.value as LibrarySort);
-                    }}
-                >
-                    {LIBRARY_SORTS.map((option) => {
-                        return (
-                            <option key={option} value={option}>
-                                {t(SORT_KEYS[kind][option])}
-                            </option>
-                        );
-                    })}
-                </select>
-            </label>
+            <div className="library-controls__end">
+                {beforeSort}
+                <label className="library-controls__sort">
+                    <span className="field__label">{t('library.sort')}</span>
+                    <select
+                        className="input"
+                        value={sort}
+                        onChange={(event) => {
+                            onSort(event.target.value as LibrarySort);
+                        }}
+                    >
+                        {LIBRARY_SORTS.map((option) => {
+                            return (
+                                <option key={option} value={option}>
+                                    {t(SORT_KEYS[kind][option])}
+                                </option>
+                            );
+                        })}
+                    </select>
+                </label>
+            </div>
         </div>
     );
 }

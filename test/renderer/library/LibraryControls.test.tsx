@@ -142,4 +142,29 @@ describe('LibraryControls', () => {
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
         expect(screen.getByRole('option', { name: 'Z–A' })).toHaveProperty('selected', true);
     });
+
+    it('renders optional controls right before the sort selector and only the sort label when omitted', () => {
+        const onFilter = vi.fn();
+        const onSort = vi.fn();
+        const { rerender } = render(
+            <LibraryControls
+                kind="manga"
+                filter="all"
+                sort="recent"
+                allCount={5}
+                newsCount={1}
+                beforeSort={<button type="button">CATEGORIES</button>}
+                onFilter={onFilter}
+                onSort={onSort}
+            />
+        );
+        const button = screen.getByRole('button', { name: 'CATEGORIES' });
+        const sort = screen.getByRole('combobox', { name: 'Sort by' }).closest('label');
+        expect(button.parentElement).toHaveClass('library-controls__end');
+        expect(button.nextElementSibling).toBe(sort);
+
+        rerender(<LibraryControls kind="manga" filter="all" sort="recent" allCount={5} newsCount={1} onFilter={onFilter} onSort={onSort} />);
+        const end = screen.getByRole('combobox', { name: 'Sort by' }).closest('.library-controls__end');
+        expect(end?.children).toHaveLength(1);
+    });
 });

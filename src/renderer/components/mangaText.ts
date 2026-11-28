@@ -442,6 +442,100 @@ export function matchesManga(manga: Pick<LibraryManga, 'title' | 'series'>, sear
     return matchesSearch(manga.title, search) || (manga.series !== null && matchesSearch(manga.series, search));
 }
 
+export type LibraryGenreMode = 'or' | 'and';
+
+export function foldedGenreKey(genre: string): string {
+    return foldText(genre.trim());
+}
+
+export function foldedGenreKeySet(genres: readonly string[]): Set<string> {
+    const keys = new Set<string>();
+    genres.forEach((genre) => {
+        const key = foldedGenreKey(genre);
+        if (key.length > 0) {
+            keys.add(key);
+        }
+    });
+    return keys;
+}
+
+export function availableGenres(mangas: readonly Pick<LibraryManga, 'genres'>[]): string[] {
+    const byKey = new Map<string, string>();
+    mangas.forEach((manga) => {
+        manga.genres.forEach((genre) => {
+            const trimmed = genre.trim();
+            const key = foldText(trimmed);
+            if (key.length > 0 && !byKey.has(key)) {
+                byKey.set(key, trimmed);
+            }
+        });
+    });
+    return [...byKey.values()].sort(compareNames);
+}
+
+export function activeLibraryGenres(selected: readonly string[], available: readonly string[]): string[] {
+    const canonicalByKey = new Map<string, string>();
+    available.forEach((genre) => {
+        const trimmed = genre.trim();
+        const key = foldText(trimmed);
+        if (key.length > 0 && !canonicalByKey.has(key)) {
+            canonicalByKey.set(key, trimmed);
+        }
+    });
+    const seen = new Set<string>();
+    const active: string[] = [];
+    selected.forEach((genre) => {
+        const key = foldedGenreKey(genre);
+        const canonical = canonicalByKey.get(key);
+        if (canonical !== undefined && !seen.has(key)) {
+            seen.add(key);
+            active.push(canonical);
+        }
+    });
+    return active;
+}
+
+function matchesFoldedGenres(genres: readonly string[], wanted: ReadonlySet<string>, mode: LibraryGenreMode): boolean {
+    if (wanted.size === 0) {
+        return true;
+    }
+    if (mode === 'or') {
+        return genres.some((genre) => {
+            return wanted.has(foldedGenreKey(genre));
+        });
+    }
+    if (genres.length < wanted.size) {
+        return false;
+    }
+    const matched = new Set<string>();
+    for (const genre of genres) {
+        const key = foldedGenreKey(genre);
+        if (wanted.has(key)) {
+            matched.add(key);
+            if (matched.size === wanted.size) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+export function matchesMangaGenres(manga: Pick<LibraryManga, 'genres'>, selected: readonly string[], mode: LibraryGenreMode): boolean {
+    return matchesFoldedGenres(manga.genres, foldedGenreKeySet(selected), mode);
+}
+
+export function filterGroupsByGenres(groups: MangaLibraryGroup[], selected: readonly string[], mode: LibraryGenreMode): MangaLibraryGroup[] {
+    const wanted = foldedGenreKeySet(selected);
+    if (wanted.size === 0) {
+        return groups;
+    }
+    return groups.filter((group) => {
+        return group.entries.some((manga) => {
+            return matchesFoldedGenres(manga.genres, wanted, mode);
+        });
+    });
+}
+
 export function inGroup(library: readonly LibraryManga[], groupId: number | null): LibraryManga[] {
     return library.filter((manga) => {
         return groupId === null ? manga.groupIds.length === 0 : manga.groupIds.includes(groupId);

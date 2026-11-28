@@ -5,6 +5,7 @@ import { useAppStore, type DownloadsView, type Tab, type ToolsMode } from '../st
 import { useMangaStore, type MangaBrowseView, type MangaSelection, type MangaView } from '../store/mangaStore';
 import { useCutStore } from '../store/cutStore';
 import { useExplorerStore } from '../store/explorerStore';
+import { activeGroup } from '../components/mangaText';
 import { isBatchingNavigation, onNavigationBatchEnd } from '../navigation/navigationBatch';
 import { MAX_NAVIGATION_ENTRIES, NavigationHistory } from './navigationHistory';
 import { isScrollRestoring, restoreScroll } from './scrollRestoration';
@@ -66,7 +67,16 @@ function showMangaPage(page: MangaPage): void {
     } else if (page.sourceId !== null && manga.browse.mode !== page.mode) {
         manga.setMode(page.mode);
     }
-    useMangaStore.setState({ view: page.view, previousView: page.previousView, selection: page.selection, selectionFrom: page.selectionFrom, librarySeries: page.librarySeries, libraryGroup: page.libraryGroup });
+    const groupChanged = activeGroup(manga.library, manga.groups, manga.libraryGroup) !== activeGroup(manga.library, manga.groups, page.libraryGroup);
+    useMangaStore.setState({
+        view: page.view,
+        previousView: page.previousView,
+        selection: page.selection,
+        selectionFrom: page.selectionFrom,
+        librarySeries: page.librarySeries,
+        libraryGroup: page.libraryGroup,
+        ...(groupChanged ? { libraryGenres: [], libraryGenreMode: 'or' as const } : {})
+    });
     if (page.settingsOpen && !manga.sourceSettings.open) {
         void manga.openSourceSettings();
     } else if (!page.settingsOpen && manga.sourceSettings.open) {

@@ -376,6 +376,13 @@
     outline-offset: 3px;
 }
 
+.library-controls__end {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .library-controls__sort {
     display: flex;
     flex-direction: column;
@@ -397,6 +404,10 @@
 
     .hero__title {
         font-size: 24px;
+    }
+
+    .library-controls__end {
+        flex: 1 1 100%;
     }
 
     .library-controls__sort {
